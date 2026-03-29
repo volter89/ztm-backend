@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZTM Planer</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #111;
+      color: white;
+      padding: 20px;
+    }
+    input, button {
+      width: 100%;
+      padding: 15px;
+      margin: 8px 0;
+      border-radius: 10px;
+      border: none;
+    }
+    button {
+      background: #00c853;
+      color: white;
+      font-size: 16px;
+    }
+    #result {
+      margin-top: 20px;
+      white-space: pre-line;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🚍 ZTM Planer</h2>
+
+<input id="start" placeholder="Przystanek startowy">
+<input id="end" placeholder="Przystanek końcowy">
+<input id="ride" placeholder="Czas jazdy (min)">
+<input id="transfer" placeholder="Czas przesiadki (min)">
+<input id="total" placeholder="Łączny czas pracy (min)">
+
+<button onclick="plan()">GENERUJ TRASĘ</button>
+
+<div id="result"></div>
+
+<script>
+async function plan() {
+
+  const res = await fetch("https://ztm-backend-vg5c.onrender.com", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      start: document.getElementById("start").value,
+      end: document.getElementById("end").value,
+      ride_time: +document.getElementById("ride").value,
+      transfer_time: +document.getElementById("transfer").value,
+      total_time: +document.getElementById("total").value
+    })
+  });
+
+  const data = await res.json();
+
+  document.getElementById("result").innerText =
+    data.route.join("\n") + "\n\n⏱ " + data.total_time + " min";
+}
+</script>
+
+</body>
+</html>
