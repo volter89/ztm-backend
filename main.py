@@ -35,3 +35,14 @@ def plan(data: RequestData):
         ],
         "total_time": data.total_time
     }
+@app.get("/stops")
+def get_stops():
+    return [
+        "Katowice Dworzec",
+        "Katowice Strefa Kultury",
+        "Chorzów Rynek",
+        "Czeladź Staszica",
+        "Czeladź Piaski",
+        "Sosnowiec Dworzec PKP",
+        "Bytom Dworzec"
+    ]
