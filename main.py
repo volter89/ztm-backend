@@ -35,10 +35,7 @@ def normalize(text):
     text = text.replace('"', '').replace("'", "")
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
-
-    # 🔥 usuń numery typu "01", "02"
     text = re.sub(r"\b\d+\b", "", text)
-
     return text.strip()
 
 # 🚍 PLANOWANIE
@@ -48,9 +45,8 @@ def plan(data: RequestData):
         start_name = data.start
         end_name = data.end
 
-        # 📦 mapowanie: nazwa -> lista ID
+        # 📦 wczytaj stops
         stop_name_to_ids = {}
-
         with open("stops.txt", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -62,14 +58,13 @@ def plan(data: RequestData):
 
                 stop_name_to_ids[stop_name].append(stop_id)
 
-        # 🔍 NORMALIZACJA
+        # 🔍 dopasowanie nazw
         start_norm = normalize(start_name)
         end_norm = normalize(end_name)
 
         start_ids = []
         end_ids = []
 
-        # 🔥 MEGA DOPASOWANIE
         for name, ids in stop_name_to_ids.items():
             name_norm = normalize(name)
 
@@ -81,11 +76,7 @@ def plan(data: RequestData):
 
         if not start_ids or not end_ids:
             return {
-                "route": [
-                    f"❌ Nie znaleziono przystanku",
-                    f"DEBUG start: {start_name}",
-                    f"DEBUG end: {end_name}"
-                ],
+                "route": ["❌ Nie znaleziono przystanku"],
                 "total_time": data.total_time
             }
 
@@ -103,27 +94,62 @@ def plan(data: RequestData):
 
                 stop_times[trip_id].append(stop_id)
 
-        # 🔍 SZUKANIE POŁĄCZENIA
+        # 🔍 1. BEZPOŚREDNIE POŁĄCZENIE
         for trip_id, stops in stop_times.items():
-            for start_id in start_ids:
-                for end_id in end_ids:
-                    if start_id in stops and end_id in stops:
-                        if stops.index(start_id) < stops.index(end_id):
+            for s_id in start_ids:
+                for e_id in end_ids:
+                    if s_id in stops and e_id in stops:
+                        if stops.index(s_id) < stops.index(e_id):
                             return {
                                 "route": [
-                                    "🚍 Znaleziono bezpośrednie połączenie!",
+                                    "🚍 Bezpośrednie połączenie",
                                     f"Start: {start_name}",
                                     f"Koniec: {end_name}"
                                 ],
                                 "total_time": data.total_time
                             }
 
+        # 🔥 2. PRZESIADKA (A → X → B)
+
+        # znajdź trasy ze startu
+        start_trips = []
+        for trip_id, stops in stop_times.items():
+            if any(s in stops for s in start_ids):
+                start_trips.append((trip_id, stops))
+
+        # znajdź trasy do końca
+        end_trips = []
+        for trip_id, stops in stop_times.items():
+            if any(e in stops for e in end_ids):
+                end_trips.append((trip_id, stops))
+
+        # 🔍 szukaj wspólnego przystanku
+        for trip1_id, stops1 in start_trips:
+            for trip2_id, stops2 in end_trips:
+
+                # wspólne przystanki
+                common_stops = set(stops1) & set(stops2)
+
+                for transfer_stop in common_stops:
+
+                    for s_id in start_ids:
+                        if s_id in stops1 and stops1.index(s_id) < stops1.index(transfer_stop):
+
+                            for e_id in end_ids:
+                                if e_id in stops2 and stops2.index(transfer_stop) < stops2.index(e_id):
+
+                                    return {
+                                        "route": [
+                                            "🔁 Połączenie z przesiadką",
+                                            f"Start: {start_name}",
+                                            f"Przesiadka na przystanku ID: {transfer_stop}",
+                                            f"Koniec: {end_name}"
+                                        ],
+                                        "total_time": data.total_time
+                                    }
+
         return {
-            "route": [
-                "❌ Nie znaleziono bezpośredniego połączenia",
-                f"DEBUG start IDs: {len(start_ids)}",
-                f"DEBUG end IDs: {len(end_ids)}"
-            ],
+            "route": ["❌ Nie znaleziono połączenia"],
             "total_time": data.total_time
         }
 
