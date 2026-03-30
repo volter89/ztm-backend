@@ -28,7 +28,7 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
-# 🔤 NORMALIZACJA (usuwa polskie znaki itd.)
+# 🔤 NORMALIZACJA
 def normalize(text):
     text = text.lower().strip()
     text = unicodedata.normalize("NFKD", text)
@@ -39,8 +39,9 @@ def normalize(text):
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        start_name = data.start
-        end_name = data.end
+        # 🔥 usuń cudzysłowy i śmieci
+        start_name = data.start.replace('"', '').replace("'", "").strip()
+        end_name = data.end.replace('"', '').replace("'", "").strip()
 
         stop_name_to_ids = {}
 
