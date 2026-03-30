@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# 🔥 CORS (żeby frontend działał)
+# 🔥 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,7 +13,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🟢 TEST (TEN ELEMENT CI BRAKOWAŁ)
+# 🟢 TEST
 @app.get("/")
 def home():
     return {"status": "ZTM backend działa 🚍"}
@@ -48,25 +48,22 @@ def plan(data: RequestData):
 
             stop_name_to_ids[stop_name].append(stop_id)
 
-    # 🔍 znajdź pasujące przystanki
-start_ids = []
-end_ids = []
+    # 🔍 dopasowanie (ważne — TERAZ JEST W FUNKCJI)
+    start_ids = []
+    end_ids = []
 
-for name, ids in stop_name_to_ids.items():
-    if start_name.lower() in name.lower():
-        start_ids.extend(ids)
+    for name, ids in stop_name_to_ids.items():
+        if start_name.lower() in name.lower():
+            start_ids.extend(ids)
 
-    if end_name.lower() in name.lower():
-        end_ids.extend(ids)
+        if end_name.lower() in name.lower():
+            end_ids.extend(ids)
 
-if not start_ids or not end_ids:
-    return {
-        "route": ["❌ Nie znaleziono przystanku"],
-        "total_time": data.total_time
-    }
-
-    start_ids = stop_name_to_ids[start_name]
-    end_ids = stop_name_to_ids[end_name]
+    if not start_ids or not end_ids:
+        return {
+            "route": ["❌ Nie znaleziono przystanku"],
+            "total_time": data.total_time
+        }
 
     stop_times = {}
 
@@ -84,10 +81,8 @@ if not start_ids or not end_ids:
 
     # 🔍 SZUKANIE
     for trip_id, stops in stop_times.items():
-
         for start_id in start_ids:
             for end_id in end_ids:
-
                 if start_id in stops and end_id in stops:
                     if stops.index(start_id) < stops.index(end_id):
                         return {
@@ -104,16 +99,16 @@ if not start_ids or not end_ids:
         "total_time": data.total_time
     }
 
-# 🔍 lista przystanków z pliku GTFS
+# 🔍 lista przystanków
 @app.get("/stops")
 def get_stops():
     stops = []
 
     with open("stops.txt", encoding="utf-8-sig") as f:
-        next(f)  # pomiń nagłówek
+        next(f)
         for line in f:
             parts = line.split(",")
             if len(parts) > 2:
-                stops.append(parts[2])  # nazwa przystanku
+                stops.append(parts[2])
 
-    return list(set(stops))  # usuwa duplikaty
+    return list(set(stops))
