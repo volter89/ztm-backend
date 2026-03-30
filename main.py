@@ -13,6 +13,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 🟢 TEST (TEN ELEMENT CI BRAKOWAŁ)
+@app.get("/")
+def home():
+    return {"status": "ZTM backend działa 🚍"}
+
 # 📦 dane wejściowe
 class RequestData(BaseModel):
     start: str
@@ -21,6 +26,7 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
+# 🚍 PLANOWANIE
 @app.post("/plan")
 def plan(data: RequestData):
     import csv
@@ -28,7 +34,6 @@ def plan(data: RequestData):
     start = data.start
     end = data.end
 
-    trips = {}
     stop_times = {}
 
     # 📦 wczytaj stop_times
@@ -36,12 +41,12 @@ def plan(data: RequestData):
         reader = csv.DictReader(f)
         for row in reader:
             trip_id = row["trip_id"]
-            stop_name = row["stop_id"]
+            stop_id = row["stop_id"]
 
             if trip_id not in stop_times:
                 stop_times[trip_id] = []
 
-            stop_times[trip_id].append(stop_name)
+            stop_times[trip_id].append(stop_id)
 
     # 🔍 znajdź trasę
     for trip_id, stops in stop_times.items():
