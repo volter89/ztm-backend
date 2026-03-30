@@ -26,6 +26,7 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
+# 🔤 NORMALIZACJA
 def normalize(text):
     text = text.lower().strip()
     text = text.replace('"', '').replace("'", "")
@@ -34,24 +35,44 @@ def normalize(text):
     text = re.sub(r"\b\d+\b", "", text)
     return text.strip()
 
+# 🔥 GLOBALNE DANE (ładowane raz)
+stop_name_to_ids = {}
+stop_times = {}
+
+print("🚀 Ładowanie danych GTFS...")
+
+# 📦 stops
+with open("stops.txt", encoding="utf-8-sig") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        stop_id = row["stop_id"]
+        stop_name = row["stop_name"]
+
+        if stop_name not in stop_name_to_ids:
+            stop_name_to_ids[stop_name] = []
+
+        stop_name_to_ids[stop_name].append(stop_id)
+
+# 📦 stop_times
+with open("stop_times.txt", encoding="utf-8-sig") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        trip_id = row["trip_id"]
+        stop_id = row["stop_id"]
+
+        if trip_id not in stop_times:
+            stop_times[trip_id] = []
+
+        stop_times[trip_id].append(stop_id)
+
+print("✅ Dane załadowane!")
+
+# 🚍 PLANOWANIE
 @app.post("/plan")
 def plan(data: RequestData):
     try:
         start_name = data.start
         end_name = data.end
-
-        stop_name_to_ids = {}
-
-        with open("stops.txt", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                stop_id = row["stop_id"]
-                stop_name = row["stop_name"]
-
-                if stop_name not in stop_name_to_ids:
-                    stop_name_to_ids[stop_name] = []
-
-                stop_name_to_ids[stop_name].append(stop_id)
 
         start_norm = normalize(start_name)
         end_norm = normalize(end_name)
@@ -71,20 +92,7 @@ def plan(data: RequestData):
         if not start_ids or not end_ids:
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
-        stop_times = {}
-
-        with open("stop_times.txt", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                trip_id = row["trip_id"]
-                stop_id = row["stop_id"]
-
-                if trip_id not in stop_times:
-                    stop_times[trip_id] = []
-
-                stop_times[trip_id].append(stop_id)
-
-        # bezpośrednie
+        # 🔥 szybkie wyszukiwanie (bez czytania plików)
         for stops in stop_times.values():
             for s in start_ids:
                 for e in end_ids:
@@ -97,7 +105,7 @@ def plan(data: RequestData):
                             "total_time": data.total_time
                         }
 
-        # przesiadka
+        # 🔁 przesiadka
         for stops1 in stop_times.values():
             for s in start_ids:
                 if s in stops1:
@@ -121,14 +129,7 @@ def plan(data: RequestData):
     except Exception as e:
         return {"route": [f"❌ Błąd: {str(e)}"], "total_time": 0}
 
-# 🔥 POPRAWIONY /stops
+# 🔍 stops
 @app.get("/stops")
 def get_stops():
-    stops = []
-
-    with open("stops.txt", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            stops.append(row["stop_name"])
-
-    return list(set(stops))
+    return list(stop_name_to_ids.keys())
