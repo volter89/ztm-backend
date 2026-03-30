@@ -7,7 +7,6 @@ import re
 
 app = FastAPI()
 
-# 🔥 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,12 +15,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🟢 TEST
 @app.get("/")
 def home():
     return {"status": "ZTM backend działa 🚍"}
 
-# 📦 dane wejściowe
 class RequestData(BaseModel):
     start: str
     end: str
@@ -29,7 +26,6 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
-# 🔤 NORMALIZACJA
 def normalize(text):
     text = text.lower().strip()
     text = text.replace('"', '').replace("'", "")
@@ -38,15 +34,14 @@ def normalize(text):
     text = re.sub(r"\b\d+\b", "", text)
     return text.strip()
 
-# 🚍 PLANOWANIE
 @app.post("/plan")
 def plan(data: RequestData):
     try:
         start_name = data.start
         end_name = data.end
 
-        # 📦 wczytaj stops
         stop_name_to_ids = {}
+
         with open("stops.txt", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -58,7 +53,6 @@ def plan(data: RequestData):
 
                 stop_name_to_ids[stop_name].append(stop_id)
 
-        # 🔍 dopasowanie nazw
         start_norm = normalize(start_name)
         end_norm = normalize(end_name)
 
@@ -75,12 +69,8 @@ def plan(data: RequestData):
                 end_ids.extend(ids)
 
         if not start_ids or not end_ids:
-            return {
-                "route": ["❌ Nie znaleziono przystanku"],
-                "total_time": data.total_time
-            }
+            return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
-        # 📦 wczytaj stop_times
         stop_times = {}
 
         with open("stop_times.txt", encoding="utf-8-sig") as f:
@@ -94,72 +84,54 @@ def plan(data: RequestData):
 
                 stop_times[trip_id].append(stop_id)
 
-        # 🔍 1. BEZPOŚREDNIE POŁĄCZENIE
-        for trip_id, stops in stop_times.items():
-            for s_id in start_ids:
-                for e_id in end_ids:
-                    if s_id in stops and e_id in stops:
-                        if stops.index(s_id) < stops.index(e_id):
-                            return {
-                                "route": [
-                                    "🚍 Bezpośrednie połączenie",
-                                    f"Start: {start_name}",
-                                    f"Koniec: {end_name}"
-                                ],
-                                "total_time": data.total_time
-                            }
+        # 🔥 1. bezpośrednie
+        for stops in stop_times.values():
+            for s in start_ids:
+                for e in end_ids:
+                    if s in stops and e in stops and stops.index(s) < stops.index(e):
+                        return {
+                            "route": [
+                                "🚍 Bezpośrednie połączenie",
+                                f"{start_name} → {end_name}"
+                            ],
+                            "total_time": data.total_time
+                        }
 
-        # 🔥 2. PRZESIADKA (A → X → B)
+        # 🔥 2. przesiadka (LEPSZA WERSJA)
 
-        # znajdź trasy ze startu
-        start_trips = []
-        for trip_id, stops in stop_times.items():
-            if any(s in stops for s in start_ids):
-                start_trips.append((trip_id, stops))
+        for stops1 in stop_times.values():
+            for s in start_ids:
+                if s in stops1:
 
-        # znajdź trasy do końca
-        end_trips = []
-        for trip_id, stops in stop_times.items():
-            if any(e in stops for e in end_ids):
-                end_trips.append((trip_id, stops))
+                    start_index = stops1.index(s)
 
-        # 🔍 szukaj wspólnego przystanku
-        for trip1_id, stops1 in start_trips:
-            for trip2_id, stops2 in end_trips:
+                    # wszystkie przystanki po starcie
+                    for transfer_stop in stops1[start_index:]:
 
-                # wspólne przystanki
-                common_stops = set(stops1) & set(stops2)
+                        # szukamy drugiego kursu
+                        for stops2 in stop_times.values():
+                            if transfer_stop in stops2:
 
-                for transfer_stop in common_stops:
+                                transfer_index = stops2.index(transfer_stop)
 
-                    for s_id in start_ids:
-                        if s_id in stops1 and stops1.index(s_id) < stops1.index(transfer_stop):
+                                for e in end_ids:
+                                    if e in stops2 and transfer_index < stops2.index(e):
 
-                            for e_id in end_ids:
-                                if e_id in stops2 and stops2.index(transfer_stop) < stops2.index(e_id):
+                                        return {
+                                            "route": [
+                                                "🔁 Połączenie z przesiadką",
+                                                f"Start: {start_name}",
+                                                f"Przesiadka (ID): {transfer_stop}",
+                                                f"Koniec: {end_name}"
+                                            ],
+                                            "total_time": data.total_time
+                                        }
 
-                                    return {
-                                        "route": [
-                                            "🔁 Połączenie z przesiadką",
-                                            f"Start: {start_name}",
-                                            f"Przesiadka na przystanku ID: {transfer_stop}",
-                                            f"Koniec: {end_name}"
-                                        ],
-                                        "total_time": data.total_time
-                                    }
-
-        return {
-            "route": ["❌ Nie znaleziono połączenia"],
-            "total_time": data.total_time
-        }
+        return {"route": ["❌ Nie znaleziono połączenia"], "total_time": data.total_time}
 
     except Exception as e:
-        return {
-            "route": [f"❌ Błąd: {str(e)}"],
-            "total_time": 0
-        }
+        return {"route": [f"❌ Błąd: {str(e)}"], "total_time": 0}
 
-# 🔍 lista przystanków
 @app.get("/stops")
 def get_stops():
     stops = []
