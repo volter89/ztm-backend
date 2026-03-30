@@ -34,26 +34,28 @@ def plan(data: RequestData):
     start_name = data.start
     end_name = data.end
 
-    stop_name_to_id = {}
+    stop_name_to_ids = {}
 
-    # 📦 wczytaj stops.txt (mapowanie nazwa -> id)
+    # 📦 mapowanie: nazwa -> lista ID
     with open("stops.txt", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             stop_id = row["stop_id"]
             stop_name = row["stop_name"]
 
-            stop_name_to_id[stop_name] = stop_id
+            if stop_name not in stop_name_to_ids:
+                stop_name_to_ids[stop_name] = []
 
-    # 🔍 znajdź ID przystanków
-    if start_name not in stop_name_to_id or end_name not in stop_name_to_id:
+            stop_name_to_ids[stop_name].append(stop_id)
+
+    if start_name not in stop_name_to_ids or end_name not in stop_name_to_ids:
         return {
             "route": ["❌ Nie znaleziono przystanku"],
             "total_time": data.total_time
         }
 
-    start_id = stop_name_to_id[start_name]
-    end_id = stop_name_to_id[end_name]
+    start_ids = stop_name_to_ids[start_name]
+    end_ids = stop_name_to_ids[end_name]
 
     stop_times = {}
 
@@ -69,18 +71,22 @@ def plan(data: RequestData):
 
             stop_times[trip_id].append(stop_id)
 
-    # 🔍 znajdź trasę
+    # 🔍 SZUKANIE
     for trip_id, stops in stop_times.items():
-        if start_id in stops and end_id in stops:
-            if stops.index(start_id) < stops.index(end_id):
-                return {
-                    "route": [
-                        "🚍 Znaleziono bezpośrednie połączenie!",
-                        f"Start: {start_name}",
-                        f"Koniec: {end_name}"
-                    ],
-                    "total_time": data.total_time
-                }
+
+        for start_id in start_ids:
+            for end_id in end_ids:
+
+                if start_id in stops and end_id in stops:
+                    if stops.index(start_id) < stops.index(end_id):
+                        return {
+                            "route": [
+                                "🚍 Znaleziono bezpośrednie połączenie!",
+                                f"Start: {start_name}",
+                                f"Koniec: {end_name}"
+                            ],
+                            "total_time": data.total_time
+                        }
 
     return {
         "route": ["❌ Nie znaleziono bezpośredniego połączenia"],
