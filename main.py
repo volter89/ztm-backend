@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# 🔥 CORS FIX
+# 🔥 CORS (żeby frontend działał)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,6 +13,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 📦 dane wejściowe
 class RequestData(BaseModel):
     start: str
     end: str
@@ -20,10 +21,12 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
+# 🟢 test działania
 @app.get("/")
 def home():
     return {"status": "ZTM backend działa 🚍"}
 
+# 🚍 planowanie (na razie proste)
 @app.post("/plan")
 def plan(data: RequestData):
     return {
@@ -35,11 +38,13 @@ def plan(data: RequestData):
         ],
         "total_time": data.total_time
     }
-@@app.get("/stops")
+
+# 🔍 lista przystanków z pliku GTFS
+@app.get("/stops")
 def get_stops():
     stops = []
 
-    with open("stops.txt", encoding="utf-8") as f:
+    with open("stops.txt", encoding="utf-8-sig") as f:
         next(f)  # pomiń nagłówek
         for line in f:
             parts = line.split(",")
@@ -47,4 +52,3 @@ def get_stops():
                 stops.append(parts[2])  # nazwa przystanku
 
     return list(set(stops))  # usuwa duplikaty
-]
