@@ -48,11 +48,22 @@ def plan(data: RequestData):
 
             stop_name_to_ids[stop_name].append(stop_id)
 
-    if start_name not in stop_name_to_ids or end_name not in stop_name_to_ids:
-        return {
-            "route": ["❌ Nie znaleziono przystanku"],
-            "total_time": data.total_time
-        }
+    # 🔍 znajdź pasujące przystanki
+start_ids = []
+end_ids = []
+
+for name, ids in stop_name_to_ids.items():
+    if start_name.lower() in name.lower():
+        start_ids.extend(ids)
+
+    if end_name.lower() in name.lower():
+        end_ids.extend(ids)
+
+if not start_ids or not end_ids:
+    return {
+        "route": ["❌ Nie znaleziono przystanku"],
+        "total_time": data.total_time
+    }
 
     start_ids = stop_name_to_ids[start_name]
     end_ids = stop_name_to_ids[end_name]
