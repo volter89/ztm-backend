@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import csv
 import unicodedata
+import re
 
 app = FastAPI()
 
@@ -31,21 +32,25 @@ class RequestData(BaseModel):
 # 🔤 NORMALIZACJA
 def normalize(text):
     text = text.lower().strip()
+    text = text.replace('"', '').replace("'", "")
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
-    return text
+
+    # 🔥 usuń numery typu "01", "02"
+    text = re.sub(r"\b\d+\b", "", text)
+
+    return text.strip()
 
 # 🚍 PLANOWANIE
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        # 🔥 usuń cudzysłowy i śmieci
-        start_name = data.start.replace('"', '').replace("'", "").strip()
-        end_name = data.end.replace('"', '').replace("'", "").strip()
-
-        stop_name_to_ids = {}
+        start_name = data.start
+        end_name = data.end
 
         # 📦 mapowanie: nazwa -> lista ID
+        stop_name_to_ids = {}
+
         with open("stops.txt", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -64,25 +69,29 @@ def plan(data: RequestData):
         start_ids = []
         end_ids = []
 
-        # 🔍 dopasowanie przystanków
+        # 🔥 MEGA DOPASOWANIE
         for name, ids in stop_name_to_ids.items():
             name_norm = normalize(name)
 
-            if start_norm in name_norm:
+            if start_norm in name_norm or name_norm in start_norm:
                 start_ids.extend(ids)
 
-            if end_norm in name_norm:
+            if end_norm in name_norm or name_norm in end_norm:
                 end_ids.extend(ids)
 
         if not start_ids or not end_ids:
             return {
-                "route": ["❌ Nie znaleziono przystanku"],
+                "route": [
+                    f"❌ Nie znaleziono przystanku",
+                    f"DEBUG start: {start_name}",
+                    f"DEBUG end: {end_name}"
+                ],
                 "total_time": data.total_time
             }
 
+        # 📦 wczytaj stop_times
         stop_times = {}
 
-        # 📦 wczytaj stop_times
         with open("stop_times.txt", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -110,7 +119,11 @@ def plan(data: RequestData):
                             }
 
         return {
-            "route": ["❌ Nie znaleziono bezpośredniego połączenia"],
+            "route": [
+                "❌ Nie znaleziono bezpośredniego połączenia",
+                f"DEBUG start IDs: {len(start_ids)}",
+                f"DEBUG end IDs: {len(end_ids)}"
+            ],
             "total_time": data.total_time
         }
 
@@ -120,7 +133,7 @@ def plan(data: RequestData):
             "total_time": 0
         }
 
-# 🔍 lista przystanków (do autocomplete)
+# 🔍 lista przystanków
 @app.get("/stops")
 def get_stops():
     stops = []
