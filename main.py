@@ -35,14 +35,16 @@ def plan(data: RequestData):
         ],
         "total_time": data.total_time
     }
-@app.get("/stops")
+@@app.get("/stops")
 def get_stops():
-    return [
-        "Katowice Dworzec",
-        "Katowice Strefa Kultury",
-        "Chorzów Rynek",
-        "Czeladź Staszica",
-        "Czeladź Piaski",
-        "Sosnowiec Dworzec PKP",
-        "Bytom Dworzec"
-    ]
+    stops = []
+
+    with open("stops.txt", encoding="utf-8") as f:
+        next(f)  # pomiń nagłówek
+        for line in f:
+            parts = line.split(",")
+            if len(parts) > 2:
+                stops.append(parts[2])  # nazwa przystanku
+
+    return list(set(stops))  # usuwa duplikaty
+]
