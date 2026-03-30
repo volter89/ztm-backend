@@ -84,7 +84,7 @@ def plan(data: RequestData):
 
                 stop_times[trip_id].append(stop_id)
 
-        # 🔥 1. bezpośrednie
+        # bezpośrednie
         for stops in stop_times.values():
             for s in start_ids:
                 for e in end_ids:
@@ -97,31 +97,20 @@ def plan(data: RequestData):
                             "total_time": data.total_time
                         }
 
-        # 🔥 2. przesiadka (LEPSZA WERSJA)
-
+        # przesiadka
         for stops1 in stop_times.values():
             for s in start_ids:
                 if s in stops1:
-
-                    start_index = stops1.index(s)
-
-                    # wszystkie przystanki po starcie
-                    for transfer_stop in stops1[start_index:]:
-
-                        # szukamy drugiego kursu
+                    for transfer in stops1:
                         for stops2 in stop_times.values():
-                            if transfer_stop in stops2:
-
-                                transfer_index = stops2.index(transfer_stop)
-
+                            if transfer in stops2:
                                 for e in end_ids:
-                                    if e in stops2 and transfer_index < stops2.index(e):
-
+                                    if e in stops2 and stops2.index(transfer) < stops2.index(e):
                                         return {
                                             "route": [
                                                 "🔁 Połączenie z przesiadką",
                                                 f"Start: {start_name}",
-                                                f"Przesiadka (ID): {transfer_stop}",
+                                                f"Przesiadka ID: {transfer}",
                                                 f"Koniec: {end_name}"
                                             ],
                                             "total_time": data.total_time
@@ -132,15 +121,14 @@ def plan(data: RequestData):
     except Exception as e:
         return {"route": [f"❌ Błąd: {str(e)}"], "total_time": 0}
 
+# 🔥 POPRAWIONY /stops
 @app.get("/stops")
 def get_stops():
     stops = []
 
     with open("stops.txt", encoding="utf-8-sig") as f:
-        next(f)
-        for line in f:
-            parts = line.split(",")
-            if len(parts) > 2:
-                stops.append(parts[2])
+        reader = csv.DictReader(f)
+        for row in reader:
+            stops.append(row["stop_name"])
 
     return list(set(stops))
