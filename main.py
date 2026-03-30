@@ -21,21 +21,43 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
-# 🟢 test działania
-@app.get("/")
-def home():
-    return {"status": "ZTM backend działa 🚍"}
-
-# 🚍 planowanie (na razie proste)
 @app.post("/plan")
 def plan(data: RequestData):
+    import csv
+
+    start = data.start
+    end = data.end
+
+    trips = {}
+    stop_times = {}
+
+    # 📦 wczytaj stop_times
+    with open("stop_times.txt", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            trip_id = row["trip_id"]
+            stop_name = row["stop_id"]
+
+            if trip_id not in stop_times:
+                stop_times[trip_id] = []
+
+            stop_times[trip_id].append(stop_name)
+
+    # 🔍 znajdź trasę
+    for trip_id, stops in stop_times.items():
+        if start in stops and end in stops:
+            if stops.index(start) < stops.index(end):
+                return {
+                    "route": [
+                        f"🚍 Znaleziono połączenie!",
+                        f"Start: {start}",
+                        f"Koniec: {end}"
+                    ],
+                    "total_time": data.total_time
+                }
+
     return {
-        "route": [
-            f"🚍 Start: {data.start}",
-            f"➡️ Jedź około {data.ride_time} min",
-            f"🔁 Przesiadka {data.transfer_time} min",
-            f"🏁 Koniec: {data.end}"
-        ],
+        "route": ["❌ Nie znaleziono bezpośredniego połączenia"],
         "total_time": data.total_time
     }
 
