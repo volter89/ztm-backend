@@ -24,7 +24,7 @@ class RequestData(BaseModel):
     total_time: int
 
 MAX_WAIT = 15
-FALLBACK_WAIT = 40  # 🔥 drugi próg
+FALLBACK_WAIT = 40
 
 def normalize(text):
     text = text.lower().strip()
@@ -52,9 +52,8 @@ route_to_name = {}
 
 with open("stops.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
-        sid = r["stop_id"]
-        stop_id_to_name[sid] = r["stop_name"]
-        stop_name_to_ids.setdefault(r["stop_name"], []).append(sid)
+        stop_id_to_name[r["stop_id"]] = r["stop_name"]
+        stop_name_to_ids.setdefault(r["stop_name"], []).append(r["stop_id"])
 
 with open("stop_times.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
@@ -69,6 +68,17 @@ with open("trips.txt", encoding="utf-8-sig") as f:
 with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
+
+# 🔥 NOWA FUNKCJA
+def has_next_connection(stop_id, current_time):
+    for trip_id, stops in stop_times.items():
+        full = stop_times_full[trip_id]
+        if stop_id in stops:
+            i = stops.index(stop_id)
+            dep = tmin(full[i]["departure_time"])
+            if dep >= current_time:
+                return True
+    return False
 
 @app.post("/plan")
 def plan(data: RequestData):
@@ -90,7 +100,6 @@ def plan(data: RequestData):
             best = None
             best_wait = 999
 
-            # 🔥 2 PRÓBY: najpierw 15 min, potem 40 min
             for MAX in [MAX_WAIT, FALLBACK_WAIT]:
 
                 for trip_id, stops in stop_times.items():
@@ -112,30 +121,28 @@ def plan(data: RequestData):
                             if wait > MAX:
                                 continue
 
-                            best_local = None
-                            best_length = 0
-
                             for j in range(i+2, min(i+6, len(stops))):
+                                next_stop = stops[j]
+
+                                # 🔥 KLUCZOWY FIX
+                                if not has_next_connection(next_stop, tmin(full[j]["arrival_time"])):
+                                    continue
+
                                 arr = tmin(full[j]["arrival_time"])
                                 seg = arr - dep
 
                                 if total_used + seg > data.total_time:
                                     continue
 
-                                if seg > best_length:
-                                    best_length = seg
-                                    best_local = (trip_id, i, j, dep, arr)
-
-                            if best_local:
                                 if wait < best_wait:
                                     best_wait = wait
-                                    best = best_local
+                                    best = (trip_id, i, j, dep, arr)
 
                 if best:
-                    break  # 🔥 znaleziono → nie szukamy dalej
+                    break
 
             if not best:
-                route.append("🚶 Brak sensownego połączenia → spróbuj zmienić kierunek")
+                route.append("🚶 Brak dalszego sensownego połączenia")
                 break
 
             trip_id, i, j, dep, arr = best
