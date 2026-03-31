@@ -38,6 +38,7 @@ def normalize(text):
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
+stop_times_full = {}
 trip_to_route = {}
 route_to_name = {}
 
@@ -57,17 +58,18 @@ with open("stops.txt", encoding="utf-8-sig") as f:
 
         stop_name_to_ids[stop_name].append(stop_id)
 
-# stop_times
+# stop_times (pełne dane)
 with open("stop_times.txt", encoding="utf-8-sig") as f:
     reader = csv.DictReader(f)
     for row in reader:
         trip_id = row["trip_id"]
-        stop_id = row["stop_id"]
 
         if trip_id not in stop_times:
             stop_times[trip_id] = []
+            stop_times_full[trip_id] = []
 
-        stop_times[trip_id].append(stop_id)
+        stop_times[trip_id].append(row["stop_id"])
+        stop_times_full[trip_id].append(row)
 
 # trips
 with open("trips.txt", encoding="utf-8-sig") as f:
@@ -106,55 +108,74 @@ def plan(data: RequestData):
 
         # 🚍 BEZPOŚREDNIE
         for trip_id, stops in stop_times.items():
+            full = stop_times_full[trip_id]
+
             for s in start_ids:
                 for e in end_ids:
-                    if s in stops and e in stops and stops.index(s) < stops.index(e):
+                    if s in stops and e in stops:
+                        i1 = stops.index(s)
+                        i2 = stops.index(e)
 
-                        route_id = trip_to_route.get(trip_id)
-                        line = route_to_name.get(route_id, "???")
+                        if i1 < i2:
+                            start_time = full[i1]["departure_time"]
+                            end_time = full[i2]["arrival_time"]
 
-                        return {
-                            "route": [
-                                f"🚍 Linia {line}",
-                                f"Start: {data.start}",
-                                f"➡️ Jedź bezpośrednio",
-                                f"Koniec: {data.end}"
-                            ],
-                            "total_time": data.total_time
-                        }
+                            line = route_to_name.get(trip_to_route.get(trip_id), "?")
+
+                            return {
+                                "route": [
+                                    f"🚍 Linia {line}",
+                                    f"🕒 {start_time} → {end_time}",
+                                    f"{data.start} → {data.end}"
+                                ],
+                                "total_time": data.total_time
+                            }
 
         # 🔁 PRZESIADKA
         for trip1_id, stops1 in stop_times.items():
+            full1 = stop_times_full[trip1_id]
+
             for s in start_ids:
                 if s in stops1:
-                    idx_s = stops1.index(s)
+                    i_start = stops1.index(s)
 
-                    for transfer in stops1[idx_s:]:
+                    for transfer in stops1[i_start:]:
+                        i_transfer = stops1.index(transfer)
 
                         for trip2_id, stops2 in stop_times.items():
                             if transfer in stops2:
-
-                                idx_t = stops2.index(transfer)
+                                full2 = stop_times_full[trip2_id]
+                                i_transfer2 = stops2.index(transfer)
 
                                 for e in end_ids:
-                                    if e in stops2 and idx_t < stops2.index(e):
+                                    if e in stops2:
+                                        i_end = stops2.index(e)
 
-                                        line1 = route_to_name.get(trip_to_route.get(trip1_id), "?")
-                                        line2 = route_to_name.get(trip_to_route.get(trip2_id), "?")
+                                        if i_transfer2 < i_end:
 
-                                        transfer_name = stop_id_to_name.get(transfer, "Nieznany")
+                                            line1 = route_to_name.get(trip_to_route.get(trip1_id), "?")
+                                            line2 = route_to_name.get(trip_to_route.get(trip2_id), "?")
 
-                                        return {
-                                            "route": [
-                                                f"🚍 Linia {line1}",
-                                                f"Start: {data.start}",
-                                                f"➡️ Jedź do: {transfer_name}",
-                                                f"🔁 Przesiadka",
-                                                f"🚍 Linia {line2}",
-                                                f"➡️ Jedź do: {data.end}"
-                                            ],
-                                            "total_time": data.total_time
-                                        }
+                                            t1_start = full1[i_start]["departure_time"]
+                                            t1_end = full1[i_transfer]["arrival_time"]
+
+                                            t2_start = full2[i_transfer2]["departure_time"]
+                                            t2_end = full2[i_end]["arrival_time"]
+
+                                            transfer_name = stop_id_to_name.get(transfer, "?")
+
+                                            return {
+                                                "route": [
+                                                    f"🚍 Linia {line1}",
+                                                    f"🕒 {t1_start} → {t1_end}",
+                                                    f"{data.start} → {transfer_name}",
+                                                    "🔁 Przesiadka",
+                                                    f"🚍 Linia {line2}",
+                                                    f"🕒 {t2_start} → {t2_end}",
+                                                    f"{transfer_name} → {data.end}"
+                                                ],
+                                                "total_time": data.total_time
+                                            }
 
         return {"route": ["❌ Nie znaleziono połączenia"], "total_time": data.total_time}
 
