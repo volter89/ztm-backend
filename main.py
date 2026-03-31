@@ -65,7 +65,6 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
-# 🔥 sprawdza czy można kontynuować
 def has_next(stop_id, current_time):
     for trip_id, stops in stop_times.items():
         full = stop_times_full[trip_id]
@@ -92,8 +91,7 @@ def plan(data: RequestData):
 
         while total_used < data.total_time:
 
-            best = None
-            best_score = -1
+            candidates = []
 
             for MAX in [MAX_WAIT, FALLBACK_WAIT]:
 
@@ -128,24 +126,35 @@ def plan(data: RequestData):
 
                                 next_stop = stops[j]
 
-                                # 🔥 NOWY SYSTEM OCENY
                                 score = seg
-
                                 if has_next(next_stop, arr):
-                                    score += 20  # bonus za kontynuację
+                                    score += 20
 
-                                if score > best_score:
-                                    best_score = score
-                                    best = (trip_id, i, j, dep, arr)
+                                candidates.append((score, trip_id, i, j, dep, arr))
 
-                if best:
+                if candidates:
                     break
 
-            if not best:
+            if not candidates:
                 route.append("🚶 Brak dalszego połączenia")
                 break
 
-            trip_id, i, j, dep, arr = best
+            # 🔥 SORTUJ I WEŹ TOP 3
+            candidates.sort(reverse=True)
+            top = candidates[:3]
+
+            # 🔥 WYBIERZ TEN, KTÓRY MA KONTYNUACJĘ
+            best = None
+            for c in top:
+                _, trip_id, i, j, dep, arr = c
+                if has_next(stop_times[trip_id][j], arr):
+                    best = c
+                    break
+
+            if not best:
+                best = top[0]
+
+            _, trip_id, i, j, dep, arr = best
 
             line = route_to_name.get(trip_to_route.get(trip_id), "?")
             from_stop = stop_id_to_name.get(stop_times[trip_id][i], "?")
