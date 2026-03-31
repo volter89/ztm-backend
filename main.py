@@ -24,6 +24,8 @@ class RequestData(BaseModel):
     total_time: int
     start_time: int
 
+MAX_STEPS = 2000  # 🔥 LIMIT
+
 def normalize(text):
     text = text.lower().strip()
     text = text.replace('"', '').replace("'", "")
@@ -78,8 +80,13 @@ def plan(data: RequestData):
 
         best_route = []
         best_time = 0
+        steps = 0
 
         while queue:
+            steps += 1
+            if steps > MAX_STEPS:
+                break  # 🔥 STOP żeby nie zawiesić
+
             stop_id, current_time, used_time, path = queue.popleft()
 
             if used_time > best_time:
@@ -90,38 +97,41 @@ def plan(data: RequestData):
                 continue
 
             for trip_id, stops in stop_times.items():
-                if stop_id in stops:
-                    full = stop_times_full[trip_id]
-                    i = stops.index(stop_id)
 
-                    dep = tmin(full[i]["departure_time"])
-                    if dep < current_time:
+                if stop_id not in stops:
+                    continue  # 🔥 szybciej
+
+                full = stop_times_full[trip_id]
+                i = stops.index(stop_id)
+
+                dep = tmin(full[i]["departure_time"])
+                if dep < current_time:
+                    continue
+
+                wait = dep - current_time
+                if wait < data.transfer_time:
+                    continue
+
+                for j in range(i+2, min(i+8, len(stops))):  # 🔥 mniejszy zakres
+                    arr = tmin(full[j]["arrival_time"])
+                    seg = arr - dep
+
+                    if seg < data.ride_time:
                         continue
 
-                    wait = dep - current_time
-                    if wait < data.transfer_time:
+                    new_time = used_time + seg
+                    if new_time > data.total_time:
                         continue
 
-                    for j in range(i+2, min(i+10, len(stops))):
-                        arr = tmin(full[j]["arrival_time"])
-                        seg = arr - dep
+                    line = route_to_name.get(trip_to_route.get(trip_id), "?")
+                    from_stop = stop_id_to_name[stop_id]
+                    to_stop = stop_id_to_name[stops[j]]
 
-                        if seg < data.ride_time:
-                            continue
+                    new_path = path + [(
+                        line, dep, arr, from_stop, to_stop
+                    )]
 
-                        new_time = used_time + seg
-                        if new_time > data.total_time:
-                            continue
-
-                        line = route_to_name.get(trip_to_route.get(trip_id), "?")
-                        from_stop = stop_id_to_name[stop_id]
-                        to_stop = stop_id_to_name[stops[j]]
-
-                        new_path = path + [(
-                            line, dep, arr, from_stop, to_stop
-                        )]
-
-                        queue.append((stops[j], arr, new_time, new_path))
+                    queue.append((stops[j], arr, new_time, new_path))
 
         result = []
 
