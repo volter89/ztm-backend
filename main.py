@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import csv
 import unicodedata
 import re
-from datetime import datetime
 
 app = FastAPI()
 
@@ -22,6 +21,7 @@ class RequestData(BaseModel):
     ride_time: int
     transfer_time: int
     total_time: int
+    start_time: int  # 🔥 NOWE
 
 MAX_WAIT = 15
 FALLBACK_WAIT = 40
@@ -38,11 +38,7 @@ def tmin(t):
     h, m, s = map(int, t.split(":"))
     return h * 60 + m
 
-def now_min():
-    n = datetime.now()
-    return n.hour * 60 + n.minute
-
-# LOAD
+# 🔥 DANE
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -52,8 +48,9 @@ route_to_name = {}
 
 with open("stops.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
-        stop_id_to_name[r["stop_id"]] = r["stop_name"]
-        stop_name_to_ids.setdefault(r["stop_name"], []).append(r["stop_id"])
+        sid = r["stop_id"]
+        stop_id_to_name[sid] = r["stop_name"]
+        stop_name_to_ids.setdefault(r["stop_name"], []).append(sid)
 
 with open("stop_times.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
@@ -69,7 +66,7 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
-# 🔥 NOWA FUNKCJA
+# 🔥 sprawdza czy można kontynuować
 def has_next_connection(stop_id, current_time):
     for trip_id, stops in stop_times.items():
         full = stop_times_full[trip_id]
@@ -83,15 +80,18 @@ def has_next_connection(stop_id, current_time):
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        now = now_min()
+        current_time = data.start_time  # 🔥 KLUCZOWA ZMIANA
 
+        # znajdź start
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
                 start_ids.extend(ids)
 
+        if not start_ids:
+            return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
+
         current_ids = start_ids
-        current_time = now
         total_used = 0
         route = []
 
@@ -123,12 +123,11 @@ def plan(data: RequestData):
 
                             for j in range(i+2, min(i+6, len(stops))):
                                 next_stop = stops[j]
+                                arr = tmin(full[j]["arrival_time"])
 
-                                # 🔥 KLUCZOWY FIX
-                                if not has_next_connection(next_stop, tmin(full[j]["arrival_time"])):
+                                if not has_next_connection(next_stop, arr):
                                     continue
 
-                                arr = tmin(full[j]["arrival_time"])
                                 seg = arr - dep
 
                                 if total_used + seg > data.total_time:
@@ -142,7 +141,7 @@ def plan(data: RequestData):
                     break
 
             if not best:
-                route.append("🚶 Brak dalszego sensownego połączenia")
+                route.append("🚶 Brak dalszego połączenia")
                 break
 
             trip_id, i, j, dep, arr = best
@@ -165,7 +164,7 @@ def plan(data: RequestData):
         return {"route": route, "total_time": data.total_time}
 
     except Exception as e:
-        return {"route": [str(e)], "total_time": 0}
+        return {"route": [f"❌ {str(e)}"], "total_time": 0}
 
 @app.get("/stops")
 def get_stops():
