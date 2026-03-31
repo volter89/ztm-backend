@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import csv
 import unicodedata
 import re
+from collections import deque
 
 app = FastAPI()
 
@@ -22,9 +23,6 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
     start_time: int
-
-MAX_WAIT = 15
-FALLBACK_WAIT = 40
 
 def normalize(text):
     text = text.lower().strip()
@@ -65,113 +63,77 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
-def has_next(stop_id, current_time):
-    for trip_id, stops in stop_times.items():
-        full = stop_times_full[trip_id]
-        if stop_id in stops:
-            i = stops.index(stop_id)
-            dep = tmin(full[i]["departure_time"])
-            if dep >= current_time:
-                return True
-    return False
-
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        current_time = data.start_time
-
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
                 start_ids.extend(ids)
 
-        current_ids = start_ids
-        total_used = 0
-        route = []
+        queue = deque()
 
-        while total_used < data.total_time:
+        for sid in start_ids:
+            queue.append((sid, data.start_time, 0, []))
 
-            candidates = []
+        best_route = []
+        best_time = 0
 
-            for MAX in [MAX_WAIT, FALLBACK_WAIT]:
+        while queue:
+            stop_id, current_time, used_time, path = queue.popleft()
 
-                for trip_id, stops in stop_times.items():
+            if used_time > best_time:
+                best_time = used_time
+                best_route = path
+
+            if used_time >= data.total_time:
+                continue
+
+            for trip_id, stops in stop_times.items():
+                if stop_id in stops:
                     full = stop_times_full[trip_id]
+                    i = stops.index(stop_id)
 
-                    for s in current_ids:
-                        if s in stops:
-                            i = stops.index(s)
-                            dep = tmin(full[i]["departure_time"])
+                    dep = tmin(full[i]["departure_time"])
+                    if dep < current_time:
+                        continue
 
-                            if dep < current_time:
-                                continue
+                    wait = dep - current_time
+                    if wait < data.transfer_time:
+                        continue
 
-                            wait = dep - current_time
+                    for j in range(i+2, min(i+10, len(stops))):
+                        arr = tmin(full[j]["arrival_time"])
+                        seg = arr - dep
 
-                            if wait < data.transfer_time:
-                                continue
+                        if seg < data.ride_time:
+                            continue
 
-                            if wait > MAX:
-                                continue
+                        new_time = used_time + seg
+                        if new_time > data.total_time:
+                            continue
 
-                            for j in range(i+2, min(i+10, len(stops))):
-                                arr = tmin(full[j]["arrival_time"])
-                                seg = arr - dep
+                        line = route_to_name.get(trip_to_route.get(trip_id), "?")
+                        from_stop = stop_id_to_name[stop_id]
+                        to_stop = stop_id_to_name[stops[j]]
 
-                                if seg < data.ride_time:
-                                    continue
+                        new_path = path + [(
+                            line, dep, arr, from_stop, to_stop
+                        )]
 
-                                if total_used + seg > data.total_time:
-                                    continue
+                        queue.append((stops[j], arr, new_time, new_path))
 
-                                next_stop = stops[j]
+        result = []
 
-                                score = seg
-                                if has_next(next_stop, arr):
-                                    score += 20
-
-                                candidates.append((score, trip_id, i, j, dep, arr))
-
-                if candidates:
-                    break
-
-            if not candidates:
-                route.append("🚶 Brak dalszego połączenia")
-                break
-
-            # 🔥 SORTUJ I WEŹ TOP 3
-            candidates.sort(reverse=True)
-            top = candidates[:3]
-
-            # 🔥 WYBIERZ TEN, KTÓRY MA KONTYNUACJĘ
-            best = None
-            for c in top:
-                _, trip_id, i, j, dep, arr = c
-                if has_next(stop_times[trip_id][j], arr):
-                    best = c
-                    break
-
-            if not best:
-                best = top[0]
-
-            _, trip_id, i, j, dep, arr = best
-
-            line = route_to_name.get(trip_to_route.get(trip_id), "?")
-            from_stop = stop_id_to_name.get(stop_times[trip_id][i], "?")
-            to_stop = stop_id_to_name.get(stop_times[trip_id][j], "?")
-
-            route.append(
-                f"🚍 Linia {line}\n🕒 {dep//60:02d}:{dep%60:02d} → {arr//60:02d}:{arr%60:02d}\n{from_stop} → {to_stop}"
+        for line, dep, arr, fr, to in best_route:
+            result.append(
+                f"🚍 Linia {line}\n🕒 {dep//60:02d}:{dep%60:02d} → {arr//60:02d}:{arr%60:02d}\n{fr} → {to}"
             )
 
-            current_ids = [stop_times[trip_id][j]]
-            current_time = arr
-            total_used += (arr - dep)
+        result.append(f"🏁 Powrót (orientacyjnie) do: {data.start}")
+        result.append(f"⏱ Wykorzystano ~{best_time} min")
 
-        route.append(f"🏁 Powrót (orientacyjnie) do: {data.start}")
-        route.append(f"⏱ Wykorzystano ~{total_used} min")
-
-        return {"route": route, "total_time": data.total_time}
+        return {"route": result, "total_time": data.total_time}
 
     except Exception as e:
         return {"route": [str(e)], "total_time": 0}
