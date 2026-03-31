@@ -27,6 +27,9 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
+# 🔥 PARAMETRY
+MAX_WAIT = 20  # maksymalny czas oczekiwania na przesiadkę (min)
+
 def normalize(text):
     text = text.lower().strip()
     text = text.replace('"', '').replace("'", "")
@@ -51,7 +54,7 @@ stop_times_full = {}
 trip_to_route = {}
 route_to_name = {}
 
-# LOAD
+# 📦 LOAD
 with open("stops.txt", encoding="utf-8-sig") as f:
     for row in csv.DictReader(f):
         stop_id = row["stop_id"]
@@ -94,7 +97,9 @@ def plan(data: RequestData):
         if not start_ids or not end_ids:
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
-        # 🔥 TRYB 1 — NORMALNA TRASA
+        # =========================
+        # 🚍 TRYB NORMALNY (A → B)
+        # =========================
         if data.start != data.end:
             for trip_id, stops in stop_times.items():
                 full = stop_times_full[trip_id]
@@ -122,7 +127,9 @@ def plan(data: RequestData):
                                     "total_time": data.total_time
                                 }
 
-        # 🔥 TRYB 2 — KONTROLA (pętla)
+        # =========================
+        # 🔁 TRYB KONTROLI (PĘTLA)
+        # =========================
         else:
             current_stop_ids = start_ids
             current_time = now
@@ -139,12 +146,18 @@ def plan(data: RequestData):
                     for s in current_stop_ids:
                         if s in stops:
                             i = stops.index(s)
+
                             dep = time_to_minutes(full[i]["departure_time"])
 
-                            if dep < current_time:
+                            wait = dep - current_time
+
+                            # 🔥 KLUCZOWY FIX
+                            if wait < 0:
                                 continue
 
-                            # jedź kilka przystanków dalej
+                            if wait > MAX_WAIT:
+                                continue
+
                             for j in range(i+2, min(i+6, len(stops))):
                                 arr = time_to_minutes(full[j]["arrival_time"])
 
