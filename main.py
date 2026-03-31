@@ -128,7 +128,7 @@ def plan(data: RequestData):
                     if seg < data.ride_time:
                         penalty = 5
 
-                    new_time = used_time + seg - penalty
+                    new_time = used_time + seg + wait - penalty
 
                     if new_time > data.total_time:
                         continue
