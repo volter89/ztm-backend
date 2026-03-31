@@ -65,6 +65,17 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
+# 🔥 sprawdza czy można kontynuować
+def has_next(stop_id, current_time):
+    for trip_id, stops in stop_times.items():
+        full = stop_times_full[trip_id]
+        if stop_id in stops:
+            i = stops.index(stop_id)
+            dep = tmin(full[i]["departure_time"])
+            if dep >= current_time:
+                return True
+    return False
+
 @app.post("/plan")
 def plan(data: RequestData):
     try:
@@ -74,9 +85,6 @@ def plan(data: RequestData):
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
                 start_ids.extend(ids)
-
-        if not start_ids:
-            return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
         current_ids = start_ids
         total_used = 0
@@ -118,8 +126,16 @@ def plan(data: RequestData):
                                 if total_used + seg > data.total_time:
                                     continue
 
-                                if seg > best_score:
-                                    best_score = seg
+                                next_stop = stops[j]
+
+                                # 🔥 NOWY SYSTEM OCENY
+                                score = seg
+
+                                if has_next(next_stop, arr):
+                                    score += 20  # bonus za kontynuację
+
+                                if score > best_score:
+                                    best_score = score
                                     best = (trip_id, i, j, dep, arr)
 
                 if best:
