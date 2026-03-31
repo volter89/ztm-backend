@@ -45,7 +45,7 @@ def now_min():
 def distance(a, b):
     return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2)
 
-# 🔥 DANE
+# LOAD
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_id_to_coords = {}
@@ -54,31 +54,23 @@ stop_times_full = {}
 trip_to_route = {}
 route_to_name = {}
 
-# LOAD stops
 with open("stops.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         sid = r["stop_id"]
-        name = r["stop_name"]
-        lat = float(r["stop_lat"])
-        lon = float(r["stop_lon"])
+        stop_id_to_name[sid] = r["stop_name"]
+        stop_id_to_coords[sid] = (float(r["stop_lat"]), float(r["stop_lon"]))
+        stop_name_to_ids.setdefault(r["stop_name"], []).append(sid)
 
-        stop_id_to_name[sid] = name
-        stop_id_to_coords[sid] = (lat, lon)
-        stop_name_to_ids.setdefault(name, []).append(sid)
-
-# LOAD stop_times
 with open("stop_times.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         tid = r["trip_id"]
         stop_times.setdefault(tid, []).append(r["stop_id"])
         stop_times_full.setdefault(tid, []).append(r)
 
-# LOAD trips
 with open("trips.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         trip_to_route[r["trip_id"]] = r["route_id"]
 
-# LOAD routes
 with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
@@ -122,41 +114,21 @@ def plan(data: RequestData):
                         if wait > MAX_WAIT:
                             continue
 
-                        for j in range(i+2, min(i+6, len(stops))):
-                            arr = tmin(full[j]["arrival_time"])
-                            seg = arr - dep
+                        # 🔥 bierzemy NAJDALEJ możliwy przystanek
+                        j = min(i+5, len(stops)-1)
 
-                            if total_used + seg > data.total_time:
-                                continue
+                        arr = tmin(full[j]["arrival_time"])
+                        seg = arr - dep
 
-                            if wait < best_wait:
-                                best_wait = wait
-                                best = (trip_id, i, j, dep, arr)
+                        if total_used + seg > data.total_time:
+                            continue
 
-            # 🔥 BRAK AUTOBUSU → SZUKAJ NAJBLIŻSZEGO PRZYSTANKU
+                        if wait < best_wait:
+                            best_wait = wait
+                            best = (trip_id, i, j, dep, arr)
+
             if not best:
-                current = current_ids[0]
-                current_coord = stop_id_to_coords[current]
-
-                nearest = None
-                best_dist = 999
-
-                for sid, coord in stop_id_to_coords.items():
-                    d = distance(current_coord, coord)
-                    if d < best_dist and sid != current:
-                        best_dist = d
-                        nearest = sid
-
-                if nearest:
-                    name = stop_id_to_name[nearest]
-                    lat, lon = stop_id_to_coords[nearest]
-
-                    maps_link = f"https://www.google.com/maps?q={lat},{lon}"
-
-                    route.append(
-                        f"🚶 Przejdź do: {name}\n📍 {maps_link}"
-                    )
-
+                route.append("🚶 Brak sensownej przesiadki → rozważ przejście pieszo")
                 break
 
             trip_id, i, j, dep, arr = best
@@ -166,7 +138,7 @@ def plan(data: RequestData):
             to_stop = stop_id_to_name.get(stop_times[trip_id][j], "?")
 
             route.append(
-                f"🚍 {line} | {dep//60:02d}:{dep%60:02d} → {arr//60:02d}:{arr%60:02d} | {from_stop} → {to_stop}"
+                f"🚍 Linia {line}\n🕒 {dep//60:02d}:{dep%60:02d} → {arr//60:02d}:{arr%60:02d}\n{from_stop} → {to_stop}"
             )
 
             current_ids = [stop_times[trip_id][j]]
