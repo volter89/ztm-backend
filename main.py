@@ -26,7 +26,6 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
-# 🔤 NORMALIZACJA
 def normalize(text):
     text = text.lower().strip()
     text = text.replace('"', '').replace("'", "")
@@ -35,25 +34,30 @@ def normalize(text):
     text = re.sub(r"\b\d+\b", "", text)
     return text.strip()
 
-# 🔥 GLOBALNE DANE (ładowane raz)
+# 🔥 GLOBALNE DANE
 stop_name_to_ids = {}
+stop_id_to_name = {}
 stop_times = {}
+trip_to_route = {}
+route_to_name = {}
 
-print("🚀 Ładowanie danych GTFS...")
+print("🚀 Ładowanie danych...")
 
-# 📦 stops
+# stops
 with open("stops.txt", encoding="utf-8-sig") as f:
     reader = csv.DictReader(f)
     for row in reader:
         stop_id = row["stop_id"]
         stop_name = row["stop_name"]
 
+        stop_id_to_name[stop_id] = stop_name
+
         if stop_name not in stop_name_to_ids:
             stop_name_to_ids[stop_name] = []
 
         stop_name_to_ids[stop_name].append(stop_id)
 
-# 📦 stop_times
+# stop_times
 with open("stop_times.txt", encoding="utf-8-sig") as f:
     reader = csv.DictReader(f)
     for row in reader:
@@ -65,17 +69,25 @@ with open("stop_times.txt", encoding="utf-8-sig") as f:
 
         stop_times[trip_id].append(stop_id)
 
+# trips
+with open("trips.txt", encoding="utf-8-sig") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        trip_to_route[row["trip_id"]] = row["route_id"]
+
+# routes
+with open("routes.txt", encoding="utf-8-sig") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        route_to_name[row["route_id"]] = row["route_short_name"]
+
 print("✅ Dane załadowane!")
 
-# 🚍 PLANOWANIE
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        start_name = data.start
-        end_name = data.end
-
-        start_norm = normalize(start_name)
-        end_norm = normalize(end_name)
+        start_norm = normalize(data.start)
+        end_norm = normalize(data.end)
 
         start_ids = []
         end_ids = []
@@ -92,34 +104,54 @@ def plan(data: RequestData):
         if not start_ids or not end_ids:
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
-        # 🔥 szybkie wyszukiwanie (bez czytania plików)
-        for stops in stop_times.values():
+        # 🚍 BEZPOŚREDNIE
+        for trip_id, stops in stop_times.items():
             for s in start_ids:
                 for e in end_ids:
                     if s in stops and e in stops and stops.index(s) < stops.index(e):
+
+                        route_id = trip_to_route.get(trip_id)
+                        line = route_to_name.get(route_id, "???")
+
                         return {
                             "route": [
-                                "🚍 Bezpośrednie połączenie",
-                                f"{start_name} → {end_name}"
+                                f"🚍 Linia {line}",
+                                f"Start: {data.start}",
+                                f"➡️ Jedź bezpośrednio",
+                                f"Koniec: {data.end}"
                             ],
                             "total_time": data.total_time
                         }
 
-        # 🔁 przesiadka
-        for stops1 in stop_times.values():
+        # 🔁 PRZESIADKA
+        for trip1_id, stops1 in stop_times.items():
             for s in start_ids:
                 if s in stops1:
-                    for transfer in stops1:
-                        for stops2 in stop_times.values():
+                    idx_s = stops1.index(s)
+
+                    for transfer in stops1[idx_s:]:
+
+                        for trip2_id, stops2 in stop_times.items():
                             if transfer in stops2:
+
+                                idx_t = stops2.index(transfer)
+
                                 for e in end_ids:
-                                    if e in stops2 and stops2.index(transfer) < stops2.index(e):
+                                    if e in stops2 and idx_t < stops2.index(e):
+
+                                        line1 = route_to_name.get(trip_to_route.get(trip1_id), "?")
+                                        line2 = route_to_name.get(trip_to_route.get(trip2_id), "?")
+
+                                        transfer_name = stop_id_to_name.get(transfer, "Nieznany")
+
                                         return {
                                             "route": [
-                                                "🔁 Połączenie z przesiadką",
-                                                f"Start: {start_name}",
-                                                f"Przesiadka ID: {transfer}",
-                                                f"Koniec: {end_name}"
+                                                f"🚍 Linia {line1}",
+                                                f"Start: {data.start}",
+                                                f"➡️ Jedź do: {transfer_name}",
+                                                f"🔁 Przesiadka",
+                                                f"🚍 Linia {line2}",
+                                                f"➡️ Jedź do: {data.end}"
                                             ],
                                             "total_time": data.total_time
                                         }
@@ -129,7 +161,6 @@ def plan(data: RequestData):
     except Exception as e:
         return {"route": [f"❌ Błąd: {str(e)}"], "total_time": 0}
 
-# 🔍 stops
 @app.get("/stops")
 def get_stops():
     return list(stop_name_to_ids.keys())
