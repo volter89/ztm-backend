@@ -27,8 +27,7 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
-# 🔥 PARAMETRY
-MAX_WAIT = 20  # maksymalny czas oczekiwania na przesiadkę (min)
+MAX_WAIT = 15  # 🔥 maksymalny czas czekania
 
 def normalize(text):
     text = text.lower().strip()
@@ -98,7 +97,7 @@ def plan(data: RequestData):
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
         # =========================
-        # 🚍 TRYB NORMALNY (A → B)
+        # 🚍 TRYB NORMALNY
         # =========================
         if data.start != data.end:
             for trip_id, stops in stop_times.items():
@@ -112,10 +111,11 @@ def plan(data: RequestData):
 
                             if i1 < i2:
                                 dep = full[i1]["departure_time"]
+                                arr = full[i2]["arrival_time"]
+
                                 if time_to_minutes(dep) < now:
                                     continue
 
-                                arr = full[i2]["arrival_time"]
                                 line = route_to_name.get(trip_to_route.get(trip_id), "?")
 
                                 return {
@@ -128,7 +128,7 @@ def plan(data: RequestData):
                                 }
 
         # =========================
-        # 🔁 TRYB KONTROLI (PĘTLA)
+        # 🔁 TRYB KONTROLI
         # =========================
         else:
             current_stop_ids = start_ids
@@ -148,19 +148,20 @@ def plan(data: RequestData):
                             i = stops.index(s)
 
                             dep = time_to_minutes(full[i]["departure_time"])
-
                             wait = dep - current_time
 
-                            # 🔥 KLUCZOWY FIX
-                            if wait < 0:
+                            if wait < data.transfer_time:
                                 continue
 
                             if wait > MAX_WAIT:
+                                # 🔥 SUGESTIA PIESZA
+                                route_output.append(
+                                    f"🚶 Długa przesiadka ({wait} min) → rozważ przejście pieszo do innego przystanku"
+                                )
                                 continue
 
                             for j in range(i+2, min(i+6, len(stops))):
                                 arr = time_to_minutes(full[j]["arrival_time"])
-
                                 segment_time = arr - dep
 
                                 if total_used + segment_time > data.total_time:
@@ -175,7 +176,7 @@ def plan(data: RequestData):
                                 )
 
                                 current_stop_ids = [stops[j]]
-                                current_time = arr + data.transfer_time
+                                current_time = arr
                                 total_used += segment_time
 
                                 found = True
