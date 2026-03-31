@@ -21,7 +21,7 @@ class RequestData(BaseModel):
     ride_time: int
     transfer_time: int
     total_time: int
-    start_time: int  # 🔥 NOWE
+    start_time: int
 
 MAX_WAIT = 15
 FALLBACK_WAIT = 40
@@ -38,7 +38,7 @@ def tmin(t):
     h, m, s = map(int, t.split(":"))
     return h * 60 + m
 
-# 🔥 DANE
+# LOAD
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -48,9 +48,8 @@ route_to_name = {}
 
 with open("stops.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
-        sid = r["stop_id"]
-        stop_id_to_name[sid] = r["stop_name"]
-        stop_name_to_ids.setdefault(r["stop_name"], []).append(sid)
+        stop_id_to_name[r["stop_id"]] = r["stop_name"]
+        stop_name_to_ids.setdefault(r["stop_name"], []).append(r["stop_id"])
 
 with open("stop_times.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
@@ -66,23 +65,11 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
-# 🔥 sprawdza czy można kontynuować
-def has_next_connection(stop_id, current_time):
-    for trip_id, stops in stop_times.items():
-        full = stop_times_full[trip_id]
-        if stop_id in stops:
-            i = stops.index(stop_id)
-            dep = tmin(full[i]["departure_time"])
-            if dep >= current_time:
-                return True
-    return False
-
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        current_time = data.start_time  # 🔥 KLUCZOWA ZMIANA
+        current_time = data.start_time
 
-        # znajdź start
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
@@ -98,7 +85,7 @@ def plan(data: RequestData):
         while total_used < data.total_time:
 
             best = None
-            best_wait = 999
+            best_score = -1
 
             for MAX in [MAX_WAIT, FALLBACK_WAIT]:
 
@@ -121,20 +108,18 @@ def plan(data: RequestData):
                             if wait > MAX:
                                 continue
 
-                            for j in range(i+2, min(i+6, len(stops))):
-                                next_stop = stops[j]
+                            for j in range(i+2, min(i+10, len(stops))):
                                 arr = tmin(full[j]["arrival_time"])
-
-                                if not has_next_connection(next_stop, arr):
-                                    continue
-
                                 seg = arr - dep
+
+                                if seg < data.ride_time:
+                                    continue
 
                                 if total_used + seg > data.total_time:
                                     continue
 
-                                if wait < best_wait:
-                                    best_wait = wait
+                                if seg > best_score:
+                                    best_score = seg
                                     best = (trip_id, i, j, dep, arr)
 
                 if best:
@@ -164,7 +149,7 @@ def plan(data: RequestData):
         return {"route": route, "total_time": data.total_time}
 
     except Exception as e:
-        return {"route": [f"❌ {str(e)}"], "total_time": 0}
+        return {"route": [str(e)], "total_time": 0}
 
 @app.get("/stops")
 def get_stops():
