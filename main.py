@@ -17,7 +17,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"status": "ZTM backend działa 🚍"}
+    return {"status": "nowa wersja ZTM backend działa 🚍"}
 
 class RequestData(BaseModel):
     start: str
