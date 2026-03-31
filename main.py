@@ -24,7 +24,7 @@ class RequestData(BaseModel):
     total_time: int
     start_time: int
 
-MAX_STEPS = 2000  # 🔥 LIMIT
+MAX_STEPS = 2000  # zabezpieczenie przed zawieszeniem
 
 def normalize(text):
     text = text.lower().strip()
@@ -68,10 +68,14 @@ with open("routes.txt", encoding="utf-8-sig") as f:
 @app.post("/plan")
 def plan(data: RequestData):
     try:
+        # 🔍 znajdź startowe przystanki
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
                 start_ids.extend(ids)
+
+        if not start_ids:
+            return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
         queue = deque()
 
@@ -85,10 +89,11 @@ def plan(data: RequestData):
         while queue:
             steps += 1
             if steps > MAX_STEPS:
-                break  # 🔥 STOP żeby nie zawiesić
+                break
 
             stop_id, current_time, used_time, path = queue.popleft()
 
+            # 🔥 zapisujemy najlepszy wynik
             if used_time > best_time:
                 best_time = used_time
                 best_route = path
@@ -99,27 +104,32 @@ def plan(data: RequestData):
             for trip_id, stops in stop_times.items():
 
                 if stop_id not in stops:
-                    continue  # 🔥 szybciej
+                    continue
 
                 full = stop_times_full[trip_id]
                 i = stops.index(stop_id)
 
                 dep = tmin(full[i]["departure_time"])
+
                 if dep < current_time:
                     continue
 
                 wait = dep - current_time
+
                 if wait < data.transfer_time:
                     continue
 
-                for j in range(i+2, min(i+8, len(stops))):  # 🔥 mniejszy zakres
+                for j in range(i+2, min(i+8, len(stops))):
                     arr = tmin(full[j]["arrival_time"])
                     seg = arr - dep
 
+                    # 🔥 KLUCZOWA ZMIANA — kara zamiast blokady
+                    penalty = 0
                     if seg < data.ride_time:
-                        continue
+                        penalty = 5
 
-                    new_time = used_time + seg
+                    new_time = used_time + seg - penalty
+
                     if new_time > data.total_time:
                         continue
 
@@ -141,7 +151,7 @@ def plan(data: RequestData):
             )
 
         result.append(f"🏁 Powrót (orientacyjnie) do: {data.start}")
-        result.append(f"⏱ Wykorzystano ~{best_time} min")
+        result.append(f"⏱ Wykorzystano ~{int(best_time)} min")
 
         return {"route": result, "total_time": data.total_time}
 
