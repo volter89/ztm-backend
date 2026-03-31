@@ -16,10 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def home():
-    return {"status": "ZTM backend działa 🚍"}
-
 class RequestData(BaseModel):
     start: str
     end: str
@@ -27,7 +23,7 @@ class RequestData(BaseModel):
     transfer_time: int
     total_time: int
 
-MAX_WAIT = 15  # 🔥 maksymalny czas czekania
+MAX_WAIT = 15
 
 def normalize(text):
     text = text.lower().strip()
@@ -37,15 +33,15 @@ def normalize(text):
     text = re.sub(r"\b\d+\b", "", text)
     return text.strip()
 
-def time_to_minutes(t):
+def tmin(t):
     h, m, s = map(int, t.split(":"))
-    return h * 60 + m
+    return h*60 + m  # ignorujemy sekundy
 
-def current_minutes():
-    now = datetime.now()
-    return now.hour * 60 + now.minute
+def now_min():
+    n = datetime.now()
+    return n.hour*60 + n.minute
 
-# 🔥 GLOBALNE DANE
+# LOAD
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -53,155 +49,102 @@ stop_times_full = {}
 trip_to_route = {}
 route_to_name = {}
 
-# 📦 LOAD
 with open("stops.txt", encoding="utf-8-sig") as f:
-    for row in csv.DictReader(f):
-        stop_id = row["stop_id"]
-        stop_name = row["stop_name"]
-        stop_id_to_name[stop_id] = stop_name
-        stop_name_to_ids.setdefault(stop_name, []).append(stop_id)
+    for r in csv.DictReader(f):
+        stop_id_to_name[r["stop_id"]] = r["stop_name"]
+        stop_name_to_ids.setdefault(r["stop_name"], []).append(r["stop_id"])
 
 with open("stop_times.txt", encoding="utf-8-sig") as f:
-    for row in csv.DictReader(f):
-        trip_id = row["trip_id"]
-        stop_times.setdefault(trip_id, []).append(row["stop_id"])
-        stop_times_full.setdefault(trip_id, []).append(row)
+    for r in csv.DictReader(f):
+        tid = r["trip_id"]
+        stop_times.setdefault(tid, []).append(r["stop_id"])
+        stop_times_full.setdefault(tid, []).append(r)
 
 with open("trips.txt", encoding="utf-8-sig") as f:
-    for row in csv.DictReader(f):
-        trip_to_route[row["trip_id"]] = row["route_id"]
+    for r in csv.DictReader(f):
+        trip_to_route[r["trip_id"]] = r["route_id"]
 
 with open("routes.txt", encoding="utf-8-sig") as f:
-    for row in csv.DictReader(f):
-        route_to_name[row["route_id"]] = row["route_short_name"]
+    for r in csv.DictReader(f):
+        route_to_name[r["route_id"]] = r["route_short_name"]
 
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        now = current_minutes()
-
-        start_norm = normalize(data.start)
-        end_norm = normalize(data.end)
+        now = now_min()
 
         start_ids = []
-        end_ids = []
-
         for name, ids in stop_name_to_ids.items():
-            n = normalize(name)
-            if start_norm in n or n in start_norm:
+            if normalize(data.start) in normalize(name):
                 start_ids.extend(ids)
-            if end_norm in n or n in end_norm:
-                end_ids.extend(ids)
 
-        if not start_ids or not end_ids:
-            return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
+        # 🔁 TRYB KONTROLI
+        current_ids = start_ids
+        current_time = now
+        total_used = 0
+        route = []
 
-        # =========================
-        # 🚍 TRYB NORMALNY
-        # =========================
-        if data.start != data.end:
+        while total_used < data.total_time:
+
+            best = None
+            best_wait = 999
+
             for trip_id, stops in stop_times.items():
                 full = stop_times_full[trip_id]
 
-                for s in start_ids:
-                    for e in end_ids:
-                        if s in stops and e in stops:
-                            i1 = stops.index(s)
-                            i2 = stops.index(e)
+                for s in current_ids:
+                    if s in stops:
+                        i = stops.index(s)
 
-                            if i1 < i2:
-                                dep = full[i1]["departure_time"]
-                                arr = full[i2]["arrival_time"]
+                        dep = tmin(full[i]["departure_time"])
 
-                                if time_to_minutes(dep) < now:
-                                    continue
+                        # 🔥 KLUCZOWY FIX
+                        if dep < current_time:
+                            continue
 
-                                line = route_to_name.get(trip_to_route.get(trip_id), "?")
+                        wait = dep - current_time
 
-                                return {
-                                    "route": [
-                                        f"🚍 Linia {line}",
-                                        f"🕒 {dep} → {arr}",
-                                        f"{data.start} → {data.end}"
-                                    ],
-                                    "total_time": data.total_time
-                                }
+                        if wait < data.transfer_time:
+                            continue
 
-        # =========================
-        # 🔁 TRYB KONTROLI
-        # =========================
-        else:
-            current_stop_ids = start_ids
-            current_time = now
-            total_used = 0
-            route_output = []
+                        if wait > MAX_WAIT:
+                            continue
 
-            while total_used < data.total_time:
+                        for j in range(i+2, min(i+6, len(stops))):
+                            arr = tmin(full[j]["arrival_time"])
+                            seg = arr - dep
 
-                found = False
-
-                for trip_id, stops in stop_times.items():
-                    full = stop_times_full[trip_id]
-
-                    for s in current_stop_ids:
-                        if s in stops:
-                            i = stops.index(s)
-
-                            dep = time_to_minutes(full[i]["departure_time"])
-                            wait = dep - current_time
-
-                            if wait < data.transfer_time:
+                            if total_used + seg > data.total_time:
                                 continue
 
-                            if wait > MAX_WAIT:
-                                # 🔥 SUGESTIA PIESZA
-                                route_output.append(
-                                    f"🚶 Długa przesiadka ({wait} min) → rozważ przejście pieszo do innego przystanku"
-                                )
-                                continue
+                            if wait < best_wait:
+                                best_wait = wait
+                                best = (trip_id, i, j, dep, arr)
 
-                            for j in range(i+2, min(i+6, len(stops))):
-                                arr = time_to_minutes(full[j]["arrival_time"])
-                                segment_time = arr - dep
+            if not best:
+                break
 
-                                if total_used + segment_time > data.total_time:
-                                    continue
+            trip_id, i, j, dep, arr = best
 
-                                line = route_to_name.get(trip_to_route.get(trip_id), "?")
-                                from_stop = stop_id_to_name.get(stops[i], "?")
-                                to_stop = stop_id_to_name.get(stops[j], "?")
+            line = route_to_name.get(trip_to_route.get(trip_id), "?")
+            from_stop = stop_id_to_name.get(stop_times[trip_id][i], "?")
+            to_stop = stop_id_to_name.get(stop_times[trip_id][j], "?")
 
-                                route_output.append(
-                                    f"🚍 {line} | {full[i]['departure_time']} → {full[j]['arrival_time']} | {from_stop} → {to_stop}"
-                                )
+            route.append(
+                f"🚍 {line} | {dep//60:02d}:{dep%60:02d} → {arr//60:02d}:{arr%60:02d} | {from_stop} → {to_stop}"
+            )
 
-                                current_stop_ids = [stops[j]]
-                                current_time = arr
-                                total_used += segment_time
+            current_ids = [stop_times[trip_id][j]]
+            current_time = arr
+            total_used += (arr - dep)
 
-                                found = True
-                                break
+        route.append(f"🏁 Powrót (orientacyjnie) do: {data.start}")
+        route.append(f"⏱ Wykorzystano ~{total_used} min")
 
-                        if found:
-                            break
-                    if found:
-                        break
-
-                if not found:
-                    break
-
-            route_output.append(f"🏁 Powrót (orientacyjnie) do: {data.start}")
-            route_output.append(f"⏱ Wykorzystano ~{total_used} min")
-
-            return {
-                "route": route_output,
-                "total_time": data.total_time
-            }
-
-        return {"route": ["❌ Nie znaleziono połączenia"], "total_time": data.total_time}
+        return {"route": route, "total_time": data.total_time}
 
     except Exception as e:
-        return {"route": [f"❌ Błąd: {str(e)}"], "total_time": 0}
+        return {"route": [str(e)], "total_time": 0}
 
 @app.get("/stops")
 def get_stops():
