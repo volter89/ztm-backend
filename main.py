@@ -43,7 +43,7 @@ def current_minutes():
     now = datetime.now()
     return now.hour * 60 + now.minute
 
-# 🔥 GLOBALNE DANE
+# 🔥 GLOBAL
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -51,44 +51,27 @@ stop_times_full = {}
 trip_to_route = {}
 route_to_name = {}
 
-print("🚀 Ładowanie danych...")
-
+# LOAD
 with open("stops.txt", encoding="utf-8-sig") as f:
-    reader = csv.DictReader(f)
-    for row in reader:
+    for row in csv.DictReader(f):
         stop_id = row["stop_id"]
         stop_name = row["stop_name"]
-
         stop_id_to_name[stop_id] = stop_name
-
-        if stop_name not in stop_name_to_ids:
-            stop_name_to_ids[stop_name] = []
-
-        stop_name_to_ids[stop_name].append(stop_id)
+        stop_name_to_ids.setdefault(stop_name, []).append(stop_id)
 
 with open("stop_times.txt", encoding="utf-8-sig") as f:
-    reader = csv.DictReader(f)
-    for row in reader:
+    for row in csv.DictReader(f):
         trip_id = row["trip_id"]
-
-        if trip_id not in stop_times:
-            stop_times[trip_id] = []
-            stop_times_full[trip_id] = []
-
-        stop_times[trip_id].append(row["stop_id"])
-        stop_times_full[trip_id].append(row)
+        stop_times.setdefault(trip_id, []).append(row["stop_id"])
+        stop_times_full.setdefault(trip_id, []).append(row)
 
 with open("trips.txt", encoding="utf-8-sig") as f:
-    reader = csv.DictReader(f)
-    for row in reader:
+    for row in csv.DictReader(f):
         trip_to_route[row["trip_id"]] = row["route_id"]
 
 with open("routes.txt", encoding="utf-8-sig") as f:
-    reader = csv.DictReader(f)
-    for row in reader:
+    for row in csv.DictReader(f):
         route_to_name[row["route_id"]] = row["route_short_name"]
-
-print("✅ Dane załadowane!")
 
 @app.post("/plan")
 def plan(data: RequestData):
@@ -102,96 +85,78 @@ def plan(data: RequestData):
         end_ids = []
 
         for name, ids in stop_name_to_ids.items():
-            name_norm = normalize(name)
-
-            if start_norm in name_norm or name_norm in start_norm:
+            n = normalize(name)
+            if start_norm in n or n in start_norm:
                 start_ids.extend(ids)
-
-            if end_norm in name_norm or name_norm in end_norm:
+            if end_norm in n or n in end_norm:
                 end_ids.extend(ids)
 
         if not start_ids or not end_ids:
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
-        # 🚍 BEZPOŚREDNIE (tylko przyszłe kursy)
-        for trip_id, stops in stop_times.items():
-            full = stop_times_full[trip_id]
+        best_option = None
+        best_wait = 9999
 
-            for s in start_ids:
-                for e in end_ids:
-                    if s in stops and e in stops:
-                        i1 = stops.index(s)
-                        i2 = stops.index(e)
-
-                        if i1 < i2:
-                            dep_time = full[i1]["departure_time"]
-                            arr_time = full[i2]["arrival_time"]
-
-                            if time_to_minutes(dep_time) < now:
-                                continue
-
-                            line = route_to_name.get(trip_to_route.get(trip_id), "?")
-
-                            return {
-                                "route": [
-                                    f"🚍 Linia {line}",
-                                    f"🕒 {dep_time} → {arr_time}",
-                                    f"{data.start} → {data.end}"
-                                ],
-                                "total_time": data.total_time
-                            }
-
-        # 🔁 PRZESIADKA (realna!)
+        # 🔁 SZUKAJ WSZYSTKICH PRZESIADEK
         for trip1_id, stops1 in stop_times.items():
             full1 = stop_times_full[trip1_id]
 
             for s in start_ids:
                 if s in stops1:
                     i_start = stops1.index(s)
+                    dep1 = time_to_minutes(full1[i_start]["departure_time"])
 
-                    dep1 = full1[i_start]["departure_time"]
-                    if time_to_minutes(dep1) < now:
+                    if dep1 < now:
                         continue
 
                     for transfer in stops1[i_start:]:
                         i_transfer = stops1.index(transfer)
-                        arr1 = full1[i_transfer]["arrival_time"]
+                        arr1 = time_to_minutes(full1[i_transfer]["arrival_time"])
 
                         for trip2_id, stops2 in stop_times.items():
                             if transfer in stops2:
                                 full2 = stop_times_full[trip2_id]
                                 i_transfer2 = stops2.index(transfer)
 
-                                dep2 = full2[i_transfer2]["departure_time"]
+                                dep2 = time_to_minutes(full2[i_transfer2]["departure_time"])
 
-                                # 🔥 KLUCZOWY WARUNEK
-                                if time_to_minutes(dep2) < time_to_minutes(arr1) + data.transfer_time:
+                                if dep2 < arr1 + data.transfer_time:
                                     continue
 
-                                for e in end_ids:
-                                    if e in stops2:
-                                        i_end = stops2.index(e)
+                                wait = dep2 - arr1
 
-                                        if i_transfer2 < i_end:
-                                            arr2 = full2[i_end]["arrival_time"]
+                                if wait < best_wait:
 
-                                            line1 = route_to_name.get(trip_to_route.get(trip1_id), "?")
-                                            line2 = route_to_name.get(trip_to_route.get(trip2_id), "?")
+                                    for e in end_ids:
+                                        if e in stops2:
+                                            i_end = stops2.index(e)
 
-                                            transfer_name = stop_id_to_name.get(transfer, "?")
+                                            if i_transfer2 < i_end:
+                                                best_wait = wait
 
-                                            return {
-                                                "route": [
-                                                    f"🚍 Linia {line1}",
-                                                    f"🕒 {dep1} → {arr1}",
-                                                    f"{data.start} → {transfer_name}",
-                                                    "🔁 Przesiadka",
-                                                    f"🚍 Linia {line2}",
-                                                    f"🕒 {dep2} → {arr2}",
-                                                    f"{transfer_name} → {data.end}"
-                                                ],
-                                                "total_time": data.total_time
-                                            }
+                                                best_option = {
+                                                    "line1": route_to_name.get(trip_to_route.get(trip1_id), "?"),
+                                                    "line2": route_to_name.get(trip_to_route.get(trip2_id), "?"),
+                                                    "dep1": full1[i_start]["departure_time"],
+                                                    "arr1": full1[i_transfer]["arrival_time"],
+                                                    "dep2": full2[i_transfer2]["departure_time"],
+                                                    "arr2": full2[i_end]["arrival_time"],
+                                                    "transfer": stop_id_to_name.get(transfer, "?")
+                                                }
+
+        if best_option:
+            return {
+                "route": [
+                    f"🚍 Linia {best_option['line1']}",
+                    f"🕒 {best_option['dep1']} → {best_option['arr1']}",
+                    f"{data.start} → {best_option['transfer']}",
+                    "🔁 Przesiadka",
+                    f"🚍 Linia {best_option['line2']}",
+                    f"🕒 {best_option['dep2']} → {best_option['arr2']}",
+                    f"{best_option['transfer']} → {data.end}"
+                ],
+                "total_time": data.total_time
+            }
 
         return {"route": ["❌ Nie znaleziono połączenia"], "total_time": data.total_time}
 
