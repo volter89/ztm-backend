@@ -23,7 +23,7 @@ class RequestData(BaseModel):
     total_time: int
     start_time: int
 
-MAX_WAIT = 20  # max czekanie
+MAX_WAIT = 20
 
 def normalize(text):
     text = text.lower().strip()
@@ -64,7 +64,6 @@ with open("routes.txt", encoding="utf-8-sig") as f:
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        # znajdź start
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
@@ -75,44 +74,45 @@ def plan(data: RequestData):
 
         current_time = data.start_time
         current_stops = start_ids
-
         route = []
+        first = True
 
         while True:
             best = None
 
             for trip_id, rows in stop_times_full.items():
-
                 for i, row in enumerate(rows):
-                    if row["stop_id"] in current_stops:
 
-                        dep = tmin(row["departure_time"])
+                    if row["stop_id"] not in current_stops:
+                        continue
 
-                        if dep < current_time:
+                    dep = tmin(row["departure_time"])
+
+                    if dep < current_time:
+                        continue
+
+                    wait = dep - current_time
+
+                    if wait < data.transfer_time or wait > MAX_WAIT:
+                        continue
+
+                    for j in range(i+1, min(i+6, len(rows))):
+                        arr = tmin(rows[j]["arrival_time"])
+                        seg = arr - dep
+
+                        # 🔥 KLUCZ: pierwszy przejazd ignoruje ride_time
+                        if not first and seg < data.ride_time:
                             continue
 
-                        wait = dep - current_time
-
-                        if wait < data.transfer_time or wait > MAX_WAIT:
-                            continue
-
-                        for j in range(i+2, min(i+8, len(rows))):
-                            arr = tmin(rows[j]["arrival_time"])
-                            seg = arr - dep
-
-                            if seg < data.ride_time:
-                                continue
-
-                            # wybierz najbliższy kurs (najmniejsze czekanie)
-                            if not best or wait < best["wait"]:
-                                best = {
-                                    "trip_id": trip_id,
-                                    "i": i,
-                                    "j": j,
-                                    "dep": dep,
-                                    "arr": arr,
-                                    "wait": wait
-                                }
+                        if not best or wait < best["wait"]:
+                            best = {
+                                "trip_id": trip_id,
+                                "i": i,
+                                "j": j,
+                                "dep": dep,
+                                "arr": arr,
+                                "wait": wait
+                            }
 
             if not best:
                 break
@@ -127,9 +127,9 @@ def plan(data: RequestData):
             i = best["i"]
             j = best["j"]
 
-            line = route_to_name.get(trip_to_route.get(trip_id), "?")
-            from_stop = stop_id_to_name[current_stops[0]]
+            from_stop = stop_id_to_name[stop_times_full[trip_id][i]["stop_id"]]
             to_stop = stop_id_to_name[stop_times_full[trip_id][j]["stop_id"]]
+            line = route_to_name.get(trip_to_route.get(trip_id), "?")
 
             route.append(
                 f"🚍 Linia {line}\n🕒 {dep//60:02d}:{dep%60:02d} → {arr//60:02d}:{arr%60:02d}\n{from_stop} → {to_stop}"
@@ -137,6 +137,7 @@ def plan(data: RequestData):
 
             current_time = arr
             current_stops = [stop_times_full[trip_id][j]["stop_id"]]
+            first = False
 
         used = current_time - data.start_time
 
