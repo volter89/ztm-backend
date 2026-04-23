@@ -147,7 +147,7 @@ def plan(data: RequestData):
 
                     # ride_time tylko na początku
                     if path and seg < data.ride_time:
-                        if len(path) < 2:
+                        if len(path) < 2 and real_time < data.total_time - 30:
                             continue
 
                     if arr - data.start_time > data.total_time:
