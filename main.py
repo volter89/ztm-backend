@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import csv
 import unicodedata
 import re
+import heapq
 
 app = FastAPI()
 
@@ -23,7 +24,7 @@ class RequestData(BaseModel):
     total_time: int
     start_time: int
 
-MAX_WAIT = 25  # maks czas czekania
+MAX_WAIT = 30
 
 def normalize(text):
     text = text.lower().strip()
@@ -62,22 +63,11 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
-# 🔥 sprawdza czy da się jechać dalej z przystanku
-def has_next_connection(stop_id, time):
-    for trip_id, rows in stop_times_full.items():
-        for r in rows:
-            if r["stop_id"] == stop_id:
-                dep = tmin(r["departure_time"])
-                if dep > time:
-                    return True
-    return False
-
 # ================= API =================
 
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        # 🔍 znajdź start
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
@@ -86,98 +76,84 @@ def plan(data: RequestData):
         if not start_ids:
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
-        current_time = data.start_time
-        current_stops = start_ids
-        route = []
-        first = True
+        # 🔥 priority queue (max time → dlatego minus)
+        pq = []
+        for sid in start_ids:
+            heapq.heappush(pq, (0, sid, data.start_time, []))
 
-        while True:
-            best = None
+        best_route = []
+        best_time = 0
+
+        visited = {}
+
+        while pq:
+            neg_time, stop_id, current_time, path = heapq.heappop(pq)
+            real_time = current_time - data.start_time
+
+            key = (stop_id, current_time)
+            if key in visited and visited[key] >= real_time:
+                continue
+            visited[key] = real_time
+
+            if real_time > best_time:
+                best_time = real_time
+                best_route = path
+
+            if real_time >= data.total_time:
+                continue
 
             for trip_id, rows in stop_times_full.items():
 
                 for i, row in enumerate(rows):
-
-                    if row["stop_id"] not in current_stops:
+                    if row["stop_id"] != stop_id:
                         continue
 
                     dep = tmin(row["departure_time"])
-
                     if dep < current_time:
                         continue
 
                     wait = dep - current_time
-
                     if wait < data.transfer_time or wait > MAX_WAIT:
                         continue
 
-                    for j in range(i+1, min(i+8, len(rows))):
-
+                    for j in range(i+1, min(i+10, len(rows))):
                         arr = tmin(rows[j]["arrival_time"])
-
-                        if arr < dep:
+                        if arr <= dep:
                             continue
 
                         seg = arr - dep
 
-                        # ❌ usuń zerowe przejazdy
-                        if seg <= 1:
+                        if path and seg < data.ride_time:
                             continue
 
-                        # pierwszy przejazd bez ograniczenia
-                        if not first and seg < data.ride_time:
+                        new_time = arr - data.start_time
+                        if new_time > data.total_time:
                             continue
 
-                        # 🔥 SCORE (klucz!)
-                        score = seg
+                        line = route_to_name.get(trip_to_route.get(trip_id), "?")
+                        from_stop = stop_id_to_name[stop_id]
+                        to_stop = stop_id_to_name[rows[j]["stop_id"]]
 
-                        # bonus za możliwość kontynuacji
-                        if has_next_connection(rows[j]["stop_id"], arr):
-                            score += 15
+                        new_path = path + [(
+                            line, dep, arr, from_stop, to_stop
+                        )]
 
-                        if not best or score > best["score"]:
-                            best = {
-                                "trip_id": trip_id,
-                                "i": i,
-                                "j": j,
-                                "dep": dep,
-                                "arr": arr,
-                                "wait": wait,
-                                "seg": seg,
-                                "score": score
-                            }
+                        heapq.heappush(
+                            pq,
+                            (-new_time, rows[j]["stop_id"], arr, new_path)
+                        )
 
-            if not best:
-                break
+        result = []
 
-            dep = best["dep"]
-            arr = best["arr"]
-
-            if arr - data.start_time > data.total_time:
-                break
-
-            trip_id = best["trip_id"]
-            i = best["i"]
-            j = best["j"]
-
-            from_stop = stop_id_to_name[stop_times_full[trip_id][i]["stop_id"]]
-            to_stop = stop_id_to_name[stop_times_full[trip_id][j]["stop_id"]]
-            line = route_to_name.get(trip_to_route.get(trip_id), "?")
-
-            route.append(
-                f"🚍 Linia {line}\n🕒 {dep//60:02d}:{dep%60:02d} → {arr//60:02d}:{arr%60:02d}\n{from_stop} → {to_stop}"
+        for line, dep, arr, fr, to in best_route:
+            result.append(
+                f"🚍 Linia {line}\n🕒 {dep//60:02d}:{dep%60:02d} → {arr//60:02d}:{arr%60:02d}\n{fr} → {to}"
             )
 
-            current_time = arr
-            current_stops = [stop_times_full[trip_id][j]["stop_id"]]
-            first = False
+        result.append(f"🏁 Powrót (orientacyjnie) do: {data.start}")
+        result.append(f"⏱ Wykorzystano ~{int(best_time)} min")
 
-        used = current_time - data.start_time
-
-        route.append(f"🏁 Powrót (orientacyjnie) do: {data.start}")
-        route.append(f"⏱ Wykorzystano ~{used} min")
-
-        return {"route": route, "total_time": data.total_time}
+        return {"route": result, "total_time": data.total_time}
 
     except Exception as e:
         return {"route": [str(e)], "total_time": 0}
