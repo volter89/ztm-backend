@@ -38,7 +38,8 @@ def tmin(t):
     h, m, s = map(int, t.split(":"))
     return h * 60 + m
 
-# LOAD
+# ================= LOAD =================
+
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -65,9 +66,12 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
+# ================= API =================
+
 @app.post("/plan")
 def plan(data: RequestData):
     try:
+        # 🔍 znajdź start
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
@@ -78,7 +82,6 @@ def plan(data: RequestData):
 
         queue = deque()
 
-        # ✅ poprawione: bez used_time
         for sid in start_ids:
             queue.append((sid, data.start_time, []))
 
@@ -93,19 +96,19 @@ def plan(data: RequestData):
 
             stop_id, current_time, path = queue.popleft()
 
-            # ✅ realny czas
+            # ✅ realny czas od pierwszego kursu
             if path:
-    start_trip_time = path[0][1]
-    real_time = current_time - start_trip_time
-else:
-    real_time = 0
+                start_trip_time = path[0][1]
+                real_time = current_time - start_trip_time
+            else:
+                real_time = 0
 
-if real_time > best_time and len(path) >= 2:
-    best_time = real_time
-    best_route = path
+            if real_time > best_time and len(path) >= 2:
+                best_time = real_time
+                best_route = path
 
-if real_time >= data.total_time:
-    continue
+            if real_time >= data.total_time:
+                continue
 
             for trip_id, stops in stop_times.items():
 
@@ -122,6 +125,7 @@ if real_time >= data.total_time:
 
                 wait = dep - current_time
 
+                # ⏱ minimalna przesiadka
                 if wait < 2:
                     continue
 
@@ -133,15 +137,15 @@ if real_time >= data.total_time:
 
                     seg = arr - dep
 
-                    # pomijamy błędne krótkie odcinki
+                    # 🚫 błędne odcinki
                     if seg <= 1:
                         continue
 
-                    # pierwszy przejazd bez ograniczenia
+                    # 🚍 minimalny czas jazdy (po pierwszym kursie)
                     if path and seg < data.ride_time:
                         continue
 
-                    # realny limit czasu
+                    # ⏱ limit całkowity
                     if arr - data.start_time > data.total_time:
                         continue
 
@@ -169,6 +173,7 @@ if real_time >= data.total_time:
 
     except Exception as e:
         return {"route": [str(e)], "total_time": 0}
+
 
 @app.get("/stops")
 def get_stops():
