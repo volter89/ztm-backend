@@ -127,7 +127,7 @@ def plan(data: RequestData):
                 if wait < 2:
                     continue
 
-                if wait > 20:
+                if wait > 40:
                     continue
 
                 for j in range(i + 2, min(i + 8, len(stops))):
