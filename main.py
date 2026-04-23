@@ -97,7 +97,11 @@ def plan(data: RequestData):
             stop_id, current_time, path, first = queue.popleft()
 
             # 🔥 realny czas (kluczowe!)
-            real_time = current_time - data.start_time
+            if path:
+    last_arr = path[-1][2]  # arrival z ostatniego odcinka
+    real_time = last_arr - data.start_time
+else:
+    real_time = 0
 
             if real_time > best_time:
                 best_time = real_time
