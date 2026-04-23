@@ -96,7 +96,7 @@ def plan(data: RequestData):
             # ✅ realny czas
             real_time = current_time - data.start_time
 
-            if real_time > best_time:
+            if real_time > best_time and len(path) > 1:
                 best_time = real_time
                 best_route = path
 
