@@ -24,7 +24,7 @@ class RequestData(BaseModel):
     total_time: int
     start_time: int
 
-MAX_STEPS = 2000  # zabezpieczenie przed zawieszeniem
+MAX_STEPS = 2000
 
 def normalize(text):
     text = text.lower().strip()
@@ -68,7 +68,6 @@ with open("routes.txt", encoding="utf-8-sig") as f:
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        # 🔍 znajdź startowe przystanki
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
@@ -79,8 +78,9 @@ def plan(data: RequestData):
 
         queue = deque()
 
+        # ✅ poprawione: bez used_time
         for sid in start_ids:
-            queue.append((sid, data.start_time, 0, []))
+            queue.append((sid, data.start_time, []))
 
         best_route = []
         best_time = 0
@@ -91,14 +91,16 @@ def plan(data: RequestData):
             if steps > MAX_STEPS:
                 break
 
-            stop_id, current_time, used_time, path = queue.popleft()
+            stop_id, current_time, path = queue.popleft()
 
-            # 🔥 zapisujemy najlepszy wynik
-            if used_time > best_time:
-                best_time = used_time
+            # ✅ realny czas
+            real_time = current_time - data.start_time
+
+            if real_time > best_time:
+                best_time = real_time
                 best_route = path
 
-            if used_time >= data.total_time:
+            if real_time >= data.total_time:
                 continue
 
             for trip_id, stops in stop_times.items():
@@ -121,16 +123,22 @@ def plan(data: RequestData):
 
                 for j in range(i+2, min(i+8, len(stops))):
                     arr = tmin(full[j]["arrival_time"])
+
+                    if arr <= dep:
+                        continue
+
                     seg = arr - dep
 
-                    # 🔥 KLUCZOWA ZMIANA — kara zamiast blokady
-                    penalty = 0
-                    if seg < data.ride_time:
-                        penalty = 5
+                    # pomijamy błędne krótkie odcinki
+                    if seg <= 1:
+                        continue
 
-                    new_time = arr - data.start_time
+                    # pierwszy przejazd bez ograniczenia
+                    if path and seg < data.ride_time:
+                        continue
 
-                    if new_time > data.total_time:
+                    # realny limit czasu
+                    if arr - data.start_time > data.total_time:
                         continue
 
                     line = route_to_name.get(trip_to_route.get(trip_id), "?")
@@ -141,7 +149,7 @@ def plan(data: RequestData):
                         line, dep, arr, from_stop, to_stop
                     )]
 
-                    queue.append((stops[j], arr, new_time, new_path))
+                    queue.append((stops[j], arr, new_path))
 
         result = []
 
