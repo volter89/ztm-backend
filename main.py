@@ -38,8 +38,7 @@ def tmin(t):
     h, m, s = map(int, t.split(":"))
     return h * 60 + m
 
-# ================= LOAD =================
-
+# LOAD
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -65,8 +64,6 @@ with open("trips.txt", encoding="utf-8-sig") as f:
 with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
-
-# ================= API =================
 
 @app.post("/plan")
 def plan(data: RequestData):
@@ -141,9 +138,10 @@ def plan(data: RequestData):
                     if seg <= 1:
                         continue
 
+                    # 🔧 poprawiona logika ride_time
                     if path and seg < data.ride_time:
                         if len(path) < 2:
-                        continue
+                            continue
 
                     if arr - data.start_time > data.total_time:
                         continue
@@ -156,7 +154,7 @@ def plan(data: RequestData):
                         line, dep, arr, from_stop, to_stop
                     )]
 
-                    # 🎯 KONIEC TRASY
+                    # KONIEC TRASY
                     if normalize(data.end) in normalize(to_stop):
                         best_route = new_path
                         best_time = arr - new_path[0][1] if new_path else 0
