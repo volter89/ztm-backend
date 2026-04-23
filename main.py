@@ -116,7 +116,7 @@ def plan(data: RequestData):
 
                 wait = dep - current_time
 
-                if wait < data.transfer_time:
+                if wait > data.transfer_time:
                     continue
 
                 for j in range(i+2, min(i+8, len(stops))):
