@@ -132,10 +132,14 @@ def plan(data: RequestData):
 
                 wait = dep - current_time
 
+                # kara za długie czekanie
+                penalty = wait // 5
+                real_time = (current_time - start_trip_time) - penalty
+
                 if wait < 2:
                     continue
 
-                if wait > 40:
+                if wait > 60:
                     continue
 
                 for j in range(i + 2, len(stops)):
