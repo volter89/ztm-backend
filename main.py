@@ -76,18 +76,16 @@ def plan(data: RequestData):
         if not start_ids:
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
-        # 🔥 priority queue (max time → dlatego minus)
         pq = []
         for sid in start_ids:
             heapq.heappush(pq, (0, sid, data.start_time, []))
 
         best_route = []
         best_time = 0
-
         visited = {}
 
         while pq:
-            neg_time, stop_id, current_time, path = heapq.heappop(pq)
+            neg_score, stop_id, current_time, path = heapq.heappop(pq)
             real_time = current_time - data.start_time
 
             key = (stop_id, current_time)
@@ -105,34 +103,55 @@ def plan(data: RequestData):
             for trip_id, rows in stop_times_full.items():
 
                 for i, row in enumerate(rows):
+
                     if row["stop_id"] != stop_id:
                         continue
 
                     dep = tmin(row["departure_time"])
+
                     if dep < current_time:
                         continue
 
                     wait = dep - current_time
+
                     if wait < data.transfer_time or wait > MAX_WAIT:
                         continue
 
                     for j in range(i+1, min(i+10, len(rows))):
                         arr = tmin(rows[j]["arrival_time"])
+
                         if arr <= dep:
                             continue
 
                         seg = arr - dep
 
+                        if seg <= 1:
+                            continue
+
                         if path and seg < data.ride_time:
                             continue
 
                         new_time = arr - data.start_time
+
                         if new_time > data.total_time:
                             continue
 
-                        line = route_to_name.get(trip_to_route.get(trip_id), "?")
-                        from_stop = stop_id_to_name[stop_id]
                         to_stop = stop_id_to_name[rows[j]["stop_id"]]
+                        from_stop = stop_id_to_name[stop_id]
+                        line = route_to_name.get(trip_to_route.get(trip_id), "?")
+
+                        # 🔥 HEURYSTYKA (klucz!)
+                        bonus = 0
+                        name = to_stop.lower()
+
+                        if "katowice" in name:
+                            bonus += 40
+                        elif "centrum" in name or "dworzec" in name:
+                            bonus += 30
+                        elif "sosnowiec" in name:
+                            bonus += 20
+
+                        score = new_time + bonus
 
                         new_path = path + [(
                             line, dep, arr, from_stop, to_stop
@@ -140,7 +159,7 @@ def plan(data: RequestData):
 
                         heapq.heappush(
                             pq,
-                            (-new_time, rows[j]["stop_id"], arr, new_path)
+                            (-score, rows[j]["stop_id"], arr, new_path)
                         )
 
         result = []
