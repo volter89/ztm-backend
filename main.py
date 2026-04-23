@@ -116,6 +116,9 @@ def plan(data: RequestData):
 
                 wait = dep - current_time
 
+                if wait < 2:
+                    continue
+
                 if wait > data.transfer_time:
                     continue
 
