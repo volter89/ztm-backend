@@ -123,7 +123,8 @@ def plan(data: RequestData):
                 if dep < current_time:
                     continue
 
-                wait = dep - current_time
+                if wait > 20:
+                    continue
 
                 # ⏱ minimalna przesiadka
                 if wait < 2:
@@ -152,6 +153,26 @@ def plan(data: RequestData):
                     line = route_to_name.get(trip_to_route.get(trip_id), "?")
                     from_stop = stop_id_to_name[stop_id]
                     to_stop = stop_id_to_name[stops[j]]
+                   
+                    # 🎯 jeśli osiągnęliśmy przystanek końcowy
+                    if normalize(data.end) in normalize(to_stop):
+                       new_path = path + [(
+                       line, dep, arr, from_stop, to_stop
+                       )]
+
+                       best_route = new_path
+                       best_time = arr - new_path[0][1] if new_path else 0
+
+                    return {
+                        "route": [
+                        f"🚍 Linia {l}\n🕒 {d//60:02d}:{d%60:02d} → {a//60:02d}:{a%60:02d}\n{f} → {t}"
+                        for l, d, a, f, t in best_route
+                        ] + [
+                        f"🏁 Koniec: {to_stop}",
+                        f"⏱ Wykorzystano ~{int(best_time)} min"
+                        ],
+                        "total_time": data.total_time
+                }
 
                     new_path = path + [(
                         line, dep, arr, from_stop, to_stop
