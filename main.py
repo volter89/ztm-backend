@@ -103,11 +103,12 @@ def plan(data: RequestData):
             else:
                 real_time = 0
 
-            # ✅ tylko pełne pętle
+           # tylko sensowne pętle (np. min 70% czasu)
             if path:
                 last_stop = path[-1][4]
+                
                 if normalize(data.end) in normalize(last_stop):
-                    if real_time > best_time:
+                    if real_time > best_time and real_time > data.total_time * 0.7:
                         best_time = real_time
                         best_route = path
 
