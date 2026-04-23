@@ -25,6 +25,7 @@ class RequestData(BaseModel):
     start_time: int
 
 MAX_STEPS = 2000
+MAX_WAIT = 30  # 🔥 maksymalny czas oczekiwania (min)
 
 def normalize(text):
     text = text.lower().strip()
@@ -96,10 +97,9 @@ def plan(data: RequestData):
 
             stop_id, current_time, path, first = queue.popleft()
 
-            # 🔥 REALNY CZAS (najważniejsze)
+            # 🔥 jedyne źródło czasu
             real_time = current_time - data.start_time
 
-            # zapis najlepszego wyniku
             if path and real_time > best_time:
                 best_time = real_time
                 best_route = path.copy()
@@ -117,19 +117,28 @@ def plan(data: RequestData):
 
                 dep = tmin(full[i]["departure_time"])
 
+                # ❌ nie cofamy się w czasie
                 if dep < current_time:
                     continue
 
                 wait = dep - current_time
 
+                # ❌ za krótka / za długa przesiadka
                 if wait < data.transfer_time:
+                    continue
+                if wait > MAX_WAIT:
                     continue
 
                 for j in range(i+2, min(i+8, len(stops))):
                     arr = tmin(full[j]["arrival_time"])
+
+                    # ❌ zabezpieczenie przed „cofaniem się” / GTFS-owymi dziwnościami
+                    if arr < dep:
+                        continue
+
                     seg = arr - dep
 
-                    # 🔥 pierwszy przejazd może być krótszy
+                    # pierwszy przejazd może być krótszy
                     if not first and seg < data.ride_time:
                         continue
 
@@ -162,7 +171,6 @@ def plan(data: RequestData):
 
     except Exception as e:
         return {"route": [str(e)], "total_time": 0}
-
 
 @app.get("/stops")
 def get_stops():
