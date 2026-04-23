@@ -142,7 +142,7 @@ def plan(data: RequestData):
                         continue
 
                     if path and seg < data.ride_time:
-                        continue
+                        continue if len(path) < 2 else False
 
                     if arr - data.start_time > data.total_time:
                         continue
