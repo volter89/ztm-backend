@@ -147,7 +147,7 @@ def plan(data: RequestData):
                     seg = arr - dep
 
                     # ⛔ max czas jazdy
-                    if seg > 15:
+                    if seg > 20:
                         continue
 
                     if seg <= 1:
@@ -164,6 +164,10 @@ def plan(data: RequestData):
                     line = route_to_name.get(trip_to_route.get(trip_id), "?")
                     from_stop = stop_id_to_name[stop_id]
                     to_stop = stop_id_to_name[stops[j]]
+
+                    # 🚫 blokada jazdy w miejscu
+                    if stop_id_to_name[stop_id] == to_stop:
+                        continue
 
                     new_path = path + [(
                         line, dep, arr, from_stop, to_stop
