@@ -94,9 +94,11 @@ def plan(data: RequestData):
             stop_id, current_time, used_time, path = queue.popleft()
 
             # 🔥 zapisujemy najlepszy wynik
-            if used_time > best_time:
-                best_time = used_time
-                best_route = path
+           real_time = current_time - data.start_time
+
+if real_time > best_time:
+    best_time = real_time
+    best_route = path
 
             if used_time >= data.total_time:
                 continue
