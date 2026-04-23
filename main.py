@@ -86,6 +86,7 @@ def plan(data: RequestData):
             queue.append((sid, data.start_time, []))
 
         best_route = []
+        best_score = -1
         best_time = 0
         steps = 0
 
@@ -96,19 +97,26 @@ def plan(data: RequestData):
 
             stop_id, current_time, path = queue.popleft()
 
-            # ✅ bezpieczne liczenie czasu
+            # ✅ bezpieczny czas
             if path:
                 start_trip_time = path[0][1]
                 real_time = current_time - start_trip_time
             else:
                 real_time = 0
 
-           # tylko sensowne pętle (np. min 70% czasu)
+            # 🎯 sprawdzamy powrót do startu (ranking, nie blokada)
             if path:
                 last_stop = path[-1][4]
-                
+
                 if normalize(data.end) in normalize(last_stop):
-                    if real_time > best_time and real_time > data.total_time * 0.7:
+                    score = real_time
+
+                    # bonus za długie trasy
+                    if real_time > data.total_time * 0.7:
+                        score += 50
+
+                    if score > best_score:
+                        best_score = score
                         best_time = real_time
                         best_route = path
 
@@ -147,9 +155,11 @@ def plan(data: RequestData):
                     if seg <= 1:
                         continue
 
+                    # max czas jazdy
                     if seg > 20:
                         continue
 
+                    # min czas jazdy tylko na początku
                     if path and seg < data.ride_time:
                         if len(path) < 2:
                             continue
@@ -160,6 +170,7 @@ def plan(data: RequestData):
                     from_stop = stop_id_to_name[stop_id]
                     to_stop = stop_id_to_name[stops[j]]
 
+                    # blokada stania w miejscu
                     if from_stop == to_stop:
                         continue
 
