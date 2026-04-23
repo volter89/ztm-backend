@@ -41,8 +41,7 @@ def tmin(t):
     return h * 60 + m
 
 
-# ================= LOAD =================
-
+# LOAD
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -69,8 +68,6 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
-
-# ================= API =================
 
 @app.post("/plan")
 def plan(data: RequestData):
@@ -99,16 +96,16 @@ def plan(data: RequestData):
 
             stop_id, current_time, path = queue.popleft()
 
-            # czas od pierwszego kursu
+            # ✅ bezpieczne liczenie czasu
             if path:
                 start_trip_time = path[0][1]
                 real_time = current_time - start_trip_time
             else:
                 real_time = 0
-            # tylko jeśli wróciliśmy do startu
+
+            # ✅ tylko pełne pętle
             if path:
                 last_stop = path[-1][4]
-
                 if normalize(data.end) in normalize(last_stop):
                     if real_time > best_time:
                         best_time = real_time
@@ -132,10 +129,6 @@ def plan(data: RequestData):
 
                 wait = dep - current_time
 
-                # kara za długie czekanie
-                penalty = wait // 5
-                real_time = (current_time - start_trip_time) - penalty
-
                 if wait < 2:
                     continue
 
@@ -150,39 +143,30 @@ def plan(data: RequestData):
 
                     seg = arr - dep
 
-                    # ⛔ max czas jazdy
-                    if seg > 20:
-                        continue
-
                     if seg <= 1:
                         continue
 
-                    # ride_time tylko na początku
+                    if seg > 20:
+                        continue
+
                     if path and seg < data.ride_time:
-                        if len(path) < 2 and real_time < data.total_time - 30:
+                        if len(path) < 2:
                             continue
 
                     if arr - data.start_time > data.total_time:
                         continue
 
-                    line = route_to_name.get(trip_to_route.get(trip_id), "?")
                     from_stop = stop_id_to_name[stop_id]
                     to_stop = stop_id_to_name[stops[j]]
 
-                    # 🚫 blokada jazdy w miejscu
-                    if stop_id_to_name[stop_id] == to_stop:
+                    if from_stop == to_stop:
                         continue
+
+                    line = route_to_name.get(trip_to_route.get(trip_id), "?")
 
                     new_path = path + [(
                         line, dep, arr, from_stop, to_stop
                     )]
-
-                    # zapisujemy najlepszy powrót, ale NIE kończymy
-                    if normalize(data.end) in normalize(to_stop):
-                        loop_time = arr - new_path[0][1] if new_path else 0
-                        if loop_time > best_time:
-                            best_route = new_path
-                            best_time = loop_time
 
                     queue.append((stops[j], arr, new_path))
 
