@@ -23,7 +23,7 @@ class RequestData(BaseModel):
     total_time: int
     start_time: int
 
-MAX_WAIT = 20
+MAX_WAIT = 25  # maks czas czekania
 
 def normalize(text):
     text = text.lower().strip()
@@ -37,7 +37,8 @@ def tmin(t):
     h, m, s = map(int, t.split(":"))
     return h * 60 + m
 
-# LOAD
+# ================= LOAD =================
+
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times_full = {}
@@ -61,9 +62,22 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
+# 🔥 sprawdza czy da się jechać dalej z przystanku
+def has_next_connection(stop_id, time):
+    for trip_id, rows in stop_times_full.items():
+        for r in rows:
+            if r["stop_id"] == stop_id:
+                dep = tmin(r["departure_time"])
+                if dep > time:
+                    return True
+    return False
+
+# ================= API =================
+
 @app.post("/plan")
 def plan(data: RequestData):
     try:
+        # 🔍 znajdź start
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
@@ -81,6 +95,7 @@ def plan(data: RequestData):
             best = None
 
             for trip_id, rows in stop_times_full.items():
+
                 for i, row in enumerate(rows):
 
                     if row["stop_id"] not in current_stops:
@@ -96,17 +111,31 @@ def plan(data: RequestData):
                     if wait < data.transfer_time or wait > MAX_WAIT:
                         continue
 
-                    for j in range(i+1, min(i+6, len(rows))):
+                    for j in range(i+1, min(i+8, len(rows))):
+
                         arr = tmin(rows[j]["arrival_time"])
+
+                        if arr < dep:
+                            continue
+
                         seg = arr - dep
+
+                        # ❌ usuń zerowe przejazdy
                         if seg <= 1:
                             continue
 
-                        # 🔥 KLUCZ: pierwszy przejazd ignoruje ride_time
+                        # pierwszy przejazd bez ograniczenia
                         if not first and seg < data.ride_time:
                             continue
 
-                        if not best or seg > best["seg"]:
+                        # 🔥 SCORE (klucz!)
+                        score = seg
+
+                        # bonus za możliwość kontynuacji
+                        if has_next_connection(rows[j]["stop_id"], arr):
+                            score += 15
+
+                        if not best or score > best["score"]:
                             best = {
                                 "trip_id": trip_id,
                                 "i": i,
@@ -114,7 +143,8 @@ def plan(data: RequestData):
                                 "dep": dep,
                                 "arr": arr,
                                 "wait": wait,
-                                "seg": seg
+                                "seg": seg,
+                                "score": score
                             }
 
             if not best:
@@ -151,6 +181,7 @@ def plan(data: RequestData):
 
     except Exception as e:
         return {"route": [str(e)], "total_time": 0}
+
 
 @app.get("/stops")
 def get_stops():
