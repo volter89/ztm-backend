@@ -24,7 +24,8 @@ class RequestData(BaseModel):
     total_time: int
     start_time: int
 
-MAX_STEPS = 2000
+MAX_STEPS = 3000
+
 
 def normalize(text):
     text = text.lower().strip()
@@ -34,11 +35,14 @@ def normalize(text):
     text = re.sub(r"\b\d+\b", "", text)
     return text.strip()
 
+
 def tmin(t):
     h, m, s = map(int, t.split(":"))
     return h * 60 + m
 
-# LOAD
+
+# ================= LOAD =================
+
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -64,6 +68,9 @@ with open("trips.txt", encoding="utf-8-sig") as f:
 with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
+
+
+# ================= API =================
 
 @app.post("/plan")
 def plan(data: RequestData):
@@ -138,7 +145,7 @@ def plan(data: RequestData):
                     if seg <= 1:
                         continue
 
-                    # 🔧 poprawiona logika ride_time
+                    # ride_time tylko na początku
                     if path and seg < data.ride_time:
                         if len(path) < 2:
                             continue
@@ -154,21 +161,12 @@ def plan(data: RequestData):
                         line, dep, arr, from_stop, to_stop
                     )]
 
-                    # KONIEC TRASY
+                    # zapisujemy najlepszy powrót, ale NIE kończymy
                     if normalize(data.end) in normalize(to_stop):
-                        best_route = new_path
-                        best_time = arr - new_path[0][1] if new_path else 0
-
-                        result = []
-                        for l, d, a, f, t in best_route:
-                            result.append(
-                                f"🚍 Linia {l}\n🕒 {d//60:02d}:{d%60:02d} → {a//60:02d}:{a%60:02d}\n{f} → {t}"
-                            )
-
-                        result.append(f"🏁 Koniec: {to_stop}")
-                        result.append(f"⏱ Wykorzystano ~{int(best_time)} min")
-
-                        return {"route": result, "total_time": data.total_time}
+                        loop_time = arr - new_path[0][1] if new_path else 0
+                        if loop_time > best_time:
+                            best_route = new_path
+                            best_time = loop_time
 
                     queue.append((stops[j], arr, new_path))
 
