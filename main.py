@@ -25,7 +25,7 @@ class RequestData(BaseModel):
     start_time: int
 
 MAX_STEPS = 2000
-MAX_WAIT = 30  # 🔥 maksymalny czas oczekiwania (min)
+MAX_WAIT = 30  # max czas oczekiwania (min)
 
 def normalize(text):
     text = text.lower().strip()
@@ -67,12 +67,21 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
+# 🔥 sprawdza czy z przystanku da się jechać dalej
+def has_next_connection(stop_id, time):
+    for trip_id, stops in stop_times.items():
+        if stop_id in stops:
+            i = stops.index(stop_id)
+            dep = tmin(stop_times_full[trip_id][i]["departure_time"])
+            if dep > time:
+                return True
+    return False
+
 # ================= API =================
 
 @app.post("/plan")
 def plan(data: RequestData):
     try:
-        # 🔍 znajdź startowe przystanki
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
@@ -81,7 +90,6 @@ def plan(data: RequestData):
         if not start_ids:
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
-        # BFS: (stop_id, current_time, path, first)
         queue = deque()
         for sid in start_ids:
             queue.append((sid, data.start_time, [], True))
@@ -97,7 +105,6 @@ def plan(data: RequestData):
 
             stop_id, current_time, path, first = queue.popleft()
 
-            # 🔥 jedyne źródło czasu
             real_time = current_time - data.start_time
 
             if path and real_time > best_time:
@@ -117,34 +124,35 @@ def plan(data: RequestData):
 
                 dep = tmin(full[i]["departure_time"])
 
-                # ❌ nie cofamy się w czasie
                 if dep < current_time:
                     continue
 
                 wait = dep - current_time
 
-                # ❌ za krótka / za długa przesiadka
                 if wait < data.transfer_time:
                     continue
+
                 if wait > MAX_WAIT:
                     continue
 
                 for j in range(i+2, min(i+8, len(stops))):
                     arr = tmin(full[j]["arrival_time"])
 
-                    # ❌ zabezpieczenie przed „cofaniem się” / GTFS-owymi dziwnościami
                     if arr < dep:
                         continue
 
                     seg = arr - dep
 
-                    # pierwszy przejazd może być krótszy
                     if not first and seg < data.ride_time:
                         continue
 
                     new_real_time = arr - data.start_time
 
                     if new_real_time > data.total_time:
+                        continue
+
+                    # 🔥 kluczowa zmiana — unikamy ślepych końców
+                    if not has_next_connection(stops[j], arr):
                         continue
 
                     line = route_to_name.get(trip_to_route.get(trip_id), "?")
@@ -171,6 +179,7 @@ def plan(data: RequestData):
 
     except Exception as e:
         return {"route": [str(e)], "total_time": 0}
+
 
 @app.get("/stops")
 def get_stops():
