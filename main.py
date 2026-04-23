@@ -106,14 +106,15 @@ def plan(data: RequestData):
                         if not first and seg < data.ride_time:
                             continue
 
-                        if not best or wait < best["wait"]:
+                        if not best or seg > best["seg"]:
                             best = {
                                 "trip_id": trip_id,
                                 "i": i,
                                 "j": j,
                                 "dep": dep,
                                 "arr": arr,
-                                "wait": wait
+                                "wait": wait,
+                                "seg": seg
                             }
 
             if not best:
