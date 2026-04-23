@@ -146,6 +146,10 @@ def plan(data: RequestData):
 
                     seg = arr - dep
 
+                    # ⛔ max czas jazdy
+                    if seg > 15:
+                        continue
+
                     if seg <= 1:
                         continue
 
