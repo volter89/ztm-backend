@@ -38,7 +38,8 @@ def tmin(t):
     h, m, s = map(int, t.split(":"))
     return h * 60 + m
 
-# LOAD
+# ================= LOAD =================
+
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -65,9 +66,12 @@ with open("routes.txt", encoding="utf-8-sig") as f:
     for r in csv.DictReader(f):
         route_to_name[r["route_id"]] = r["route_short_name"]
 
+# ================= API =================
+
 @app.post("/plan")
 def plan(data: RequestData):
     try:
+        # 🔍 znajdź startowe przystanki
         start_ids = []
         for name, ids in stop_name_to_ids.items():
             if normalize(data.start) in normalize(name):
@@ -76,8 +80,8 @@ def plan(data: RequestData):
         if not start_ids:
             return {"route": ["❌ Nie znaleziono przystanku"], "total_time": data.total_time}
 
+        # BFS: (stop_id, current_time, path, first)
         queue = deque()
-
         for sid in start_ids:
             queue.append((sid, data.start_time, [], True))
 
@@ -92,16 +96,13 @@ def plan(data: RequestData):
 
             stop_id, current_time, path, first = queue.popleft()
 
-            # 🔥 poprawne liczenie czasu
-            if path:
-                last_arr = path[-1][2]
-                real_time = last_arr - data.start_time
-            else:
-                real_time = 0
+            # 🔥 REALNY CZAS (najważniejsze)
+            real_time = current_time - data.start_time
 
-            if real_time > best_time:
+            # zapis najlepszego wyniku
+            if path and real_time > best_time:
                 best_time = real_time
-                best_route = path
+                best_route = path.copy()
 
             if real_time >= data.total_time:
                 continue
@@ -128,6 +129,7 @@ def plan(data: RequestData):
                     arr = tmin(full[j]["arrival_time"])
                     seg = arr - dep
 
+                    # 🔥 pierwszy przejazd może być krótszy
                     if not first and seg < data.ride_time:
                         continue
 
@@ -160,6 +162,7 @@ def plan(data: RequestData):
 
     except Exception as e:
         return {"route": [str(e)], "total_time": 0}
+
 
 @app.get("/stops")
 def get_stops():
