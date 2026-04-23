@@ -105,10 +105,14 @@ def plan(data: RequestData):
                 real_time = current_time - start_trip_time
             else:
                 real_time = 0
+            # tylko jeśli wróciliśmy do startu
+            if path:
+                last_stop = path[-1][4]
 
-            if real_time > best_time:
-                best_time = real_time
-                best_route = path
+                if normalize(data.end) in normalize(last_stop):
+                    if real_time > best_time:
+                        best_time = real_time
+                        best_route = path
 
             if real_time >= data.total_time:
                 continue
