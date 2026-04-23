@@ -94,18 +94,18 @@ def plan(data: RequestData):
             stop_id, current_time, path = queue.popleft()
 
             # ✅ realny czas
-                if path:
-                    start_trip_time = path[0][1]
-                    real_time = current_time - start_trip_time
-                else:
-                    real_time = 0
+            if path:
+    start_trip_time = path[0][1]
+    real_time = current_time - start_trip_time
+else:
+    real_time = 0
 
-                if real_time > best_time and len(path) >= 2:
-                    best_time = real_time
-                    best_route = path
+if real_time > best_time and len(path) >= 2:
+    best_time = real_time
+    best_route = path
 
-                if real_time >= data.total_time:
-                     continue
+if real_time >= data.total_time:
+    continue
 
             for trip_id, stops in stop_times.items():
 
