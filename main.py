@@ -102,7 +102,7 @@ def plan(data: RequestData):
             else:
                 real_time = 0
 
-            if real_time > best_time and len(path) >= 2:
+            if real_time > best_time:
                 best_time = real_time
                 best_route = path
 
