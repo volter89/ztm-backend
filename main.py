@@ -127,7 +127,7 @@ def plan(data: RequestData):
                 if wait > 40:
                     continue
 
-                for j in range(i + 2, min(i + 8, len(stops))):
+                for j in range(i + 2, len(stops)):
                     arr = tmin(full[j]["arrival_time"])
 
                     if arr <= dep:
