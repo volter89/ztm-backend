@@ -99,6 +99,8 @@ def plan(data: RequestData):
                     for j in range(i+1, min(i+6, len(rows))):
                         arr = tmin(rows[j]["arrival_time"])
                         seg = arr - dep
+                        if seg <= 1:
+                            continue
 
                         # 🔥 KLUCZ: pierwszy przejazd ignoruje ride_time
                         if not first and seg < data.ride_time:
