@@ -85,6 +85,7 @@ def plan(data: RequestData):
 
         queue = deque()
 
+        # (stop_id, current_time, path, total_wait)
         for sid in start_ids:
             queue.append((sid, data.start_time, [], 0))
 
@@ -101,40 +102,40 @@ def plan(data: RequestData):
 
             stop_id, current_time, path, total_wait = queue.popleft()
 
-            # czas jazdy
+            # czas jazdy (od pierwszego odjazdu w ścieżce)
             if path:
                 start_trip_time = path[0][1]
                 ride_time_total = current_time - start_trip_time
             else:
                 ride_time_total = 0
 
-            # 🎯 OCENA POWROTU
+            # ====== OCENA POWROTU ======
             if path:
                 last_stop = path[-1][4]
 
                 if normalize(data.end) in normalize(last_stop):
-                    score = ride_time_total - (total_wait * 2)
+                    # 🚫 blokada zbyt wczesnego powrotu
+                    if ride_time_total < data.total_time * 0.6:
+                        pass  # nie zapisujemy jako best, ale szukamy dalej
+                    else:
+                        score = ride_time_total - (total_wait * 2)
 
-                    # kara za krótki powrót
-                    if ride_time_total < data.total_time * 0.7:
-                        score *= 0.4
+                        # bonus za długość trasy (więcej przesiadek)
+                        score += len(path) * 15
 
-                    # 🔥 BONUS ZA DŁUGOŚĆ TRASY
-                    score += len(path) * 15
+                        # bonus za dobre wykorzystanie czasu
+                        if ride_time_total > data.total_time * 0.85:
+                            score += 50
 
-                    # bonus za dobicie czasu
-                    if ride_time_total > data.total_time * 0.85:
-                        score += 50
-
-                    if score > best_score:
-                        best_score = score
-                        best_time = ride_time_total
-                        best_route = path
+                        if score > best_score:
+                            best_score = score
+                            best_time = ride_time_total
+                            best_route = path
 
             if ride_time_total >= data.total_time:
                 continue
 
-            # 🔥 NAJBLIŻSZE AUTOBUSY
+            # ====== NAJBLIŻSZE AUTOBUSY ======
             candidates = []
 
             for trip_id, stops in stop_times.items():
@@ -146,6 +147,7 @@ def plan(data: RequestData):
 
                 dep = tmin(full[i]["departure_time"])
 
+                # tolerancja czasu
                 if dep < current_time - 1:
                     continue
 
@@ -158,7 +160,10 @@ def plan(data: RequestData):
 
                 candidates.append((dep, trip_id, i, wait))
 
+            # sortuj po czasie odjazdu
             candidates.sort(key=lambda x: x[0])
+
+            # tylko najbliższe kursy
             candidates = candidates[:3]
 
             for dep, trip_id, i, wait in candidates:
@@ -176,6 +181,7 @@ def plan(data: RequestData):
                     if seg <= 1:
                         continue
 
+                    # max czas jednego przejazdu
                     if seg > 20:
                         continue
 
@@ -185,6 +191,7 @@ def plan(data: RequestData):
                     from_stop = stop_id_to_name[stop_id]
                     to_stop = stop_id_to_name[stops[j]]
 
+                    # blokada stania w miejscu
                     if from_stop == to_stop:
                         continue
 
@@ -197,6 +204,16 @@ def plan(data: RequestData):
                     new_wait = total_wait + wait
 
                     queue.append((stops[j], arr, new_path, new_wait))
+
+        # ====== FALLBACK (żeby nie było 0 min) ======
+        if not best_route:
+            # wybierz najdłuższą ścieżkę jaka powstała
+            # (prosty fallback – ostatnia najlepsza eksploracja)
+            # tu: nic nie znaleziono wracającego, więc zostaje pusta trasa
+            return {
+                "route": ["❌ Nie znaleziono sensownej trasy (spróbuj zwiększyć czas)"],
+                "total_time": data.total_time
+            }
 
         result = []
 
