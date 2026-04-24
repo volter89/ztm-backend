@@ -108,17 +108,20 @@ def plan(data: RequestData):
             else:
                 ride_time_total = 0
 
-            # ocena powrotu
+            # 🎯 OCENA POWROTU (POPRAWIONA)
             if path:
                 last_stop = path[-1][4]
 
                 if normalize(data.end) in normalize(last_stop):
-
-                    # 🚫 blokada zbyt wczesnego powrotu
-                    if ride_time_total < data.total_time * 0.7:
-                        continue
-
                     score = ride_time_total - (total_wait * 2)
+
+                    # 🚫 kara zamiast blokady
+                    if ride_time_total < data.total_time * 0.7:
+                        score *= 0.4
+
+                    # 🔥 bonus za dobre wykorzystanie czasu
+                    if ride_time_total > data.total_time * 0.85:
+                        score += 50
 
                     if score > best_score:
                         best_score = score
@@ -128,7 +131,7 @@ def plan(data: RequestData):
             if ride_time_total >= data.total_time:
                 continue
 
-            # 🔥 SZUKAMY NAJBLIŻSZYCH AUTOBUSÓW
+            # 🔥 NAJBLIŻSZE AUTOBUSY
             candidates = []
 
             for trip_id, stops in stop_times.items():
@@ -152,10 +155,7 @@ def plan(data: RequestData):
 
                 candidates.append((dep, trip_id, i, wait))
 
-            # sortujemy po czasie odjazdu
             candidates.sort(key=lambda x: x[0])
-
-            # bierzemy tylko najbliższe
             candidates = candidates[:3]
 
             for dep, trip_id, i, wait in candidates:
