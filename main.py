@@ -97,27 +97,27 @@ def plan(data: RequestData):
 
             stop_id, current_time, path = queue.popleft()
 
-            # ✅ bezpieczny czas
+            # czas od pierwszego kursu
             if path:
                 start_trip_time = path[0][1]
                 real_time = current_time - start_trip_time
             else:
                 real_time = 0
 
-            # 🎯 sprawdzamy powrót do startu (ranking, nie blokada)
+            # 🎯 ranking powrotów (bez blokowania)
             if path:
                 last_stop = path[-1][4]
 
                 if normalize(data.end) in normalize(last_stop):
                     score = real_time
-                    
-                    # 🚫 kara za za wczesny powrót
-                    if real_time < data.total_time * 0.8:
-                        score -= 100
 
-                    # ✅ bonus za dobicie czasu
+                    # 🔽 lekka kara za bardzo krótki powrót
+                    if real_time < data.total_time * 0.6:
+                        score *= 0.6
+
+                    # 🔼 bonus za dobre wykorzystanie czasu
                     if real_time > data.total_time * 0.8:
-                        score += 100
+                        score += 50
 
                     if score > best_score:
                         best_score = score
@@ -159,11 +159,9 @@ def plan(data: RequestData):
                     if seg <= 1:
                         continue
 
-                    # max czas jazdy
                     if seg > 20:
                         continue
 
-                    # min czas jazdy tylko na początku
                     if path and seg < data.ride_time:
                         if len(path) < 2:
                             continue
@@ -174,7 +172,6 @@ def plan(data: RequestData):
                     from_stop = stop_id_to_name[stop_id]
                     to_stop = stop_id_to_name[stops[j]]
 
-                    # blokada stania w miejscu
                     if from_stop == to_stop:
                         continue
 
@@ -185,6 +182,12 @@ def plan(data: RequestData):
                     )]
 
                     queue.append((stops[j], arr, new_path))
+
+        # 🛟 fallback jeśli nie znalazł pętli
+        if not best_route and queue:
+            # bierz najdłuższą trasę jaką znalazł
+            best_route = path
+            best_time = real_time
 
         result = []
 
