@@ -113,6 +113,11 @@ def plan(data: RequestData):
                 last_stop = path[-1][4]
 
                 if normalize(data.end) in normalize(last_stop):
+
+                    # 🚫 blokada zbyt wczesnego powrotu
+                    if ride_time_total < data.total_time * 0.7:
+                        continue
+
                     score = ride_time_total - (total_wait * 2)
 
                     if score > best_score:
