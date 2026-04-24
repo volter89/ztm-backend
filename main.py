@@ -24,7 +24,7 @@ class RequestData(BaseModel):
     total_time: int
     start_time: int
 
-MAX_STEPS = 3000
+MAX_STEPS = 5000
 
 
 def normalize(text):
@@ -104,18 +104,16 @@ def plan(data: RequestData):
             else:
                 real_time = 0
 
-            # 🎯 ranking powrotów (bez blokowania)
+            # ranking powrotów
             if path:
                 last_stop = path[-1][4]
 
                 if normalize(data.end) in normalize(last_stop):
                     score = real_time
 
-                    # 🔽 lekka kara za bardzo krótki powrót
                     if real_time < data.total_time * 0.6:
                         score *= 0.6
 
-                    # 🔼 bonus za dobre wykorzystanie czasu
                     if real_time > data.total_time * 0.8:
                         score += 50
 
@@ -145,10 +143,10 @@ def plan(data: RequestData):
                 if wait < 2:
                     continue
 
-                if wait > 60:
+                if wait > 90:
                     continue
 
-                for j in range(i + 2, len(stops)):
+                for j in range(i + 1, len(stops)):
                     arr = tmin(full[j]["arrival_time"])
 
                     if arr <= dep:
@@ -159,12 +157,9 @@ def plan(data: RequestData):
                     if seg <= 1:
                         continue
 
+                    # max czas jazdy
                     if seg > 20:
                         continue
-
-                    if path and seg < data.ride_time:
-                        if len(path) < 2:
-                            continue
 
                     if arr - data.start_time > data.total_time:
                         continue
@@ -182,12 +177,6 @@ def plan(data: RequestData):
                     )]
 
                     queue.append((stops[j], arr, new_path))
-
-        # 🛟 fallback jeśli nie znalazł pętli
-        if not best_route and queue:
-            # bierz najdłuższą trasę jaką znalazł
-            best_route = path
-            best_time = real_time
 
         result = []
 
