@@ -85,7 +85,7 @@ def plan(data: RequestData):
 
         queue = deque()
 
-        # stop_id, time, path, total_wait
+        # (stop_id, current_time, path, total_wait)
         for sid in start_ids:
             queue.append((sid, data.start_time, [], 0))
 
@@ -109,7 +109,7 @@ def plan(data: RequestData):
             else:
                 ride_time_total = 0
 
-            # 🎯 ocena tylko gdy wrócił do startu
+            # ocena tylko jeśli wróciliśmy do startu
             if path:
                 last_stop = path[-1][4]
 
@@ -134,11 +134,14 @@ def plan(data: RequestData):
 
                 dep = tmin(full[i]["departure_time"])
 
-                if dep < current_time: - 1:
+                # 🔥 tolerancja czasu (KLUCZOWE)
+                if dep < current_time - 1:
                     continue
 
                 wait = dep - current_time
-                if wain < 0:
+
+                # 🔧 zabezpieczenie
+                if wait < 0:
                     wait = 0
 
                 if wait < 2:
