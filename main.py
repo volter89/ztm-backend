@@ -110,10 +110,14 @@ def plan(data: RequestData):
 
                 if normalize(data.end) in normalize(last_stop):
                     score = real_time
+                    
+                    # 🚫 kara za za wczesny powrót
+                    if real_time < data.total_time * 0.8:
+                        score -= 100
 
-                    # bonus za długie trasy
-                    if real_time > data.total_time * 0.7:
-                        score += 50
+                    # ✅ bonus za dobicie czasu
+                    if real_time > data.total_time * 0.8:
+                        score += 100
 
                     if score > best_score:
                         best_score = score
