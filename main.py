@@ -108,18 +108,21 @@ def plan(data: RequestData):
             else:
                 ride_time_total = 0
 
-            # 🎯 OCENA POWROTU (POPRAWIONA)
+            # 🎯 OCENA POWROTU
             if path:
                 last_stop = path[-1][4]
 
                 if normalize(data.end) in normalize(last_stop):
                     score = ride_time_total - (total_wait * 2)
 
-                    # 🚫 kara zamiast blokady
+                    # kara za krótki powrót
                     if ride_time_total < data.total_time * 0.7:
                         score *= 0.4
 
-                    # 🔥 bonus za dobre wykorzystanie czasu
+                    # 🔥 BONUS ZA DŁUGOŚĆ TRASY
+                    score += len(path) * 15
+
+                    # bonus za dobicie czasu
                     if ride_time_total > data.total_time * 0.85:
                         score += 50
 
