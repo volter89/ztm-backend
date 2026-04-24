@@ -85,7 +85,6 @@ def plan(data: RequestData):
 
         queue = deque()
 
-        # (stop_id, current_time, path, total_wait)
         for sid in start_ids:
             queue.append((sid, data.start_time, [], 0))
 
@@ -109,7 +108,7 @@ def plan(data: RequestData):
             else:
                 ride_time_total = 0
 
-            # ocena tylko jeśli wróciliśmy do startu
+            # ocena powrotu
             if path:
                 last_stop = path[-1][4]
 
@@ -124,8 +123,10 @@ def plan(data: RequestData):
             if ride_time_total >= data.total_time:
                 continue
 
-            for trip_id, stops in stop_times.items():
+            # 🔥 SZUKAMY NAJBLIŻSZYCH AUTOBUSÓW
+            candidates = []
 
+            for trip_id, stops in stop_times.items():
                 if stop_id not in stops:
                     continue
 
@@ -134,21 +135,27 @@ def plan(data: RequestData):
 
                 dep = tmin(full[i]["departure_time"])
 
-                # ✅ tolerancja czasu (NAPRAWIONE)
                 if dep < current_time - 1:
                     continue
 
                 wait = dep - current_time
-
-                # zabezpieczenie
                 if wait < 0:
                     wait = 0
 
-                if wait < 2:
+                if wait < 2 or wait > 90:
                     continue
 
-                if wait > 90:
-                    continue
+                candidates.append((dep, trip_id, i, wait))
+
+            # sortujemy po czasie odjazdu
+            candidates.sort(key=lambda x: x[0])
+
+            # bierzemy tylko najbliższe
+            candidates = candidates[:5]
+
+            for dep, trip_id, i, wait in candidates:
+                full = stop_times_full[trip_id]
+                stops = stop_times[trip_id]
 
                 for j in range(i + 1, len(stops)):
                     arr = tmin(full[j]["arrival_time"])
