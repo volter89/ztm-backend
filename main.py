@@ -102,7 +102,7 @@ def plan(data: RequestData):
 
             stop_id, current_time, path, total_wait = queue.popleft()
 
-            # czas jazdy (bez czekania)
+            # czas jazdy
             if path:
                 start_trip_time = path[0][1]
                 ride_time_total = current_time - start_trip_time
@@ -134,13 +134,13 @@ def plan(data: RequestData):
 
                 dep = tmin(full[i]["departure_time"])
 
-                # 🔥 tolerancja czasu (KLUCZOWE)
+                # ✅ tolerancja czasu (NAPRAWIONE)
                 if dep < current_time - 1:
                     continue
 
                 wait = dep - current_time
 
-                # 🔧 zabezpieczenie
+                # zabezpieczenie
                 if wait < 0:
                     wait = 0
 
