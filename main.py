@@ -113,7 +113,7 @@ def plan(data: RequestData):
                 last_stop = path[-1][4]
 
                 if normalize(data.end) in normalize(last_stop):
-                    score = ride_time_total - total_wait
+                    score = ride_time_total - (total_wait * 2)
 
                     if score > best_score:
                         best_score = score
@@ -151,7 +151,7 @@ def plan(data: RequestData):
             candidates.sort(key=lambda x: x[0])
 
             # bierzemy tylko najbliższe
-            candidates = candidates[:5]
+            candidates = candidates[:3]
 
             for dep, trip_id, i, wait in candidates:
                 full = stop_times_full[trip_id]
