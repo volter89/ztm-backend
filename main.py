@@ -41,7 +41,8 @@ def tmin(t):
     return h * 60 + m
 
 
-# LOAD
+# ================= LOAD =================
+
 stop_name_to_ids = {}
 stop_id_to_name = {}
 stop_times = {}
@@ -69,6 +70,8 @@ with open("routes.txt", encoding="utf-8-sig") as f:
         route_to_name[r["route_id"]] = r["route_short_name"]
 
 
+# ================= API =================
+
 @app.post("/plan")
 def plan(data: RequestData):
     try:
@@ -82,12 +85,14 @@ def plan(data: RequestData):
 
         queue = deque()
 
+        # stop_id, time, path, total_wait
         for sid in start_ids:
-            queue.append((sid, data.start_time, []))
+            queue.append((sid, data.start_time, [], 0))
 
         best_route = []
         best_score = -1
         best_time = 0
+
         steps = 0
 
         while queue:
@@ -95,34 +100,28 @@ def plan(data: RequestData):
             if steps > MAX_STEPS:
                 break
 
-            stop_id, current_time, path = queue.popleft()
+            stop_id, current_time, path, total_wait = queue.popleft()
 
-            # czas od pierwszego kursu
+            # czas jazdy (bez czekania)
             if path:
                 start_trip_time = path[0][1]
-                real_time = current_time - start_trip_time
+                ride_time_total = current_time - start_trip_time
             else:
-                real_time = 0
+                ride_time_total = 0
 
-            # ranking powrotów
+            # 🎯 ocena tylko gdy wrócił do startu
             if path:
                 last_stop = path[-1][4]
 
                 if normalize(data.end) in normalize(last_stop):
-                    score = real_time
-
-                    if real_time < data.total_time * 0.6:
-                        score *= 0.6
-
-                    if real_time > data.total_time * 0.8:
-                        score += 50
+                    score = ride_time_total - total_wait
 
                     if score > best_score:
                         best_score = score
-                        best_time = real_time
+                        best_time = ride_time_total
                         best_route = path
 
-            if real_time >= data.total_time:
+            if ride_time_total >= data.total_time:
                 continue
 
             for trip_id, stops in stop_times.items():
@@ -157,7 +156,6 @@ def plan(data: RequestData):
                     if seg <= 1:
                         continue
 
-                    # max czas jazdy
                     if seg > 20:
                         continue
 
@@ -176,7 +174,9 @@ def plan(data: RequestData):
                         line, dep, arr, from_stop, to_stop
                     )]
 
-                    queue.append((stops[j], arr, new_path))
+                    new_wait = total_wait + wait
+
+                    queue.append((stops[j], arr, new_path, new_wait))
 
         result = []
 
