@@ -134,10 +134,12 @@ def plan(data: RequestData):
 
                 dep = tmin(full[i]["departure_time"])
 
-                if dep < current_time:
+                if dep < current_time: - 1:
                     continue
 
                 wait = dep - current_time
+                if wain < 0:
+                    wait = 0
 
                 if wait < 2:
                     continue
